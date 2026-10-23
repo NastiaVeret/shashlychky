@@ -9,7 +9,7 @@
 import asyncio
 import os
 
-from silpo_client import connect
+from silpo_client import SilpoError, connect
 
 URL = os.environ.get("SILPO_MCP_URL", "https://mcp.silpo.ua/mcp")
 
@@ -33,8 +33,11 @@ async def main() -> None:
                   "| перешкоди оформленню:", [(v["message"], v["context"]) for v in r.checkout_issues])
 
             ghost = {**item, "id": "00000000-0000-4000-8000-0000000000ff"}
-            r2 = await silpo.add_products_verified([(ghost, 1)])
-            print("неіснуючий товар: не додано", r2.missing, "ok", r2.ok, "(очікуємо ok False)")
+            try:
+                r2 = await silpo.add_products_verified([(ghost, 1)])
+                print("неіснуючий товар: не додано", r2.missing, "ok", r2.ok, "(очікуємо ok False)")
+            except SilpoError as e:
+                print("неіснуючий товар: сервер відповів помилкою:", e.text[:500])
 
             print("set_quantity(2):", await silpo.set_quantity(item["id"], 2))
 

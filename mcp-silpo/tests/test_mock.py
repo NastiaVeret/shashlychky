@@ -2,6 +2,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from mcp.shared.memory import create_connected_server_and_client_session
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -107,3 +108,55 @@ async def test_add_products_verified_ok_even_with_stale_slot():
         assert r.ok and r.errors == []
         assert [v["message"] for v in r.checkout_issues] == ["order.cost.min"]
         assert r.checkout_issues[0]["context"]["orderCostMin"] == 799
+
+
+class _FakeResult:
+    def __init__(self, text, is_error=False):
+        self.content = [type("C", (), {"text": text})()]
+        self.isError = is_error
+
+
+class _FakeSession:
+    def __init__(self, *replies):
+        self.replies, self.calls = list(replies), 0
+
+    async def call_tool(self, name, args):
+        self.calls += 1
+        return self.replies.pop(0)
+
+
+async def test_call_retries_on_rate_limit_then_succeeds(monkeypatch):
+    import silpo_client
+    from silpo_client import SilpoClient
+    delays = []
+
+    async def fake_sleep(d):
+        delays.append(d)
+
+    monkeypatch.setattr(silpo_client.asyncio, "sleep", fake_sleep)
+    session = _FakeSession(_FakeResult("Error 429: too many requests", True),
+                           _FakeResult("Rate limit exceeded"), _FakeResult('{"success": true}'))
+    assert await SilpoClient(session).call("x") == {"success": True}
+    assert delays == [1, 2]
+
+
+async def test_call_raises_with_server_text_when_not_json():
+    from silpo_client import SilpoClient, SilpoError
+    session = _FakeSession(_FakeResult("Product not found"))
+    with pytest.raises(SilpoError) as e:
+        await SilpoClient(session).call("silpo_add_cart_products")
+    assert e.value.text == "Product not found" and session.calls == 1  # без повторів на звичайну помилку
+
+
+async def test_call_gives_up_after_all_retries(monkeypatch):
+    import silpo_client
+    from silpo_client import SilpoClient, SilpoError
+
+    async def fake_sleep(d):
+        pass
+
+    monkeypatch.setattr(silpo_client.asyncio, "sleep", fake_sleep)
+    session = _FakeSession(*[_FakeResult("429", True)] * 4)
+    with pytest.raises(SilpoError):
+        await SilpoClient(session).call("x")
+    assert session.calls == 4

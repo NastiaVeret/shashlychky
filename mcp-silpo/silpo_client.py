@@ -6,7 +6,9 @@
 - додавання в кошик перевіряється перечитуванням кошика, бо сервер повертає
   success навіть коли товар не додався.
 """
+import asyncio
 import json
+import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,6 +18,18 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 from silpo_auth import make_auth
+
+
+class SilpoError(RuntimeError):
+    """Tool повернув помилку або не-JSON. Текст відповіді сервера зберігається в `.text`."""
+
+    def __init__(self, tool: str, text: str):
+        super().__init__(f"{tool}: {text[:300]}")
+        self.tool, self.text = tool, text
+
+
+RATE_LIMIT = re.compile(r"429|rate.?limit|too many|забагато", re.IGNORECASE)
+RETRY_DELAYS = (1, 2, 4)  # секунди; експоненціальна пауза при ліміті запитів
 
 
 @asynccontextmanager
@@ -51,8 +65,21 @@ class SilpoClient:
         self.session = session
 
     async def call(self, name: str, args: dict | None = None) -> dict:
-        result = await self.session.call_tool(name, args or {})
-        return json.loads(result.content[0].text)
+        """Викликає tool і розбирає JSON. При ліміті запитів (429) повторює з паузою 1/2/4 с.
+        Формат відповіді на 429 у реального сервера не бачили, тому ліміт розпізнається за текстом."""
+        for attempt, delay in enumerate((*RETRY_DELAYS, None)):
+            result = await self.session.call_tool(name, args or {})
+            text = result.content[0].text if result.content else ""
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                data = None
+            if data is not None and not result.isError:
+                return data
+            if delay is not None and RATE_LIMIT.search(text):
+                await asyncio.sleep(delay)
+                continue
+            raise SilpoError(name, text)
 
     async def cart(self) -> tuple[str, dict]:
         cart_id = (await self.call("silpo_get_my_shopping_cart"))["shoppingCartId"]
