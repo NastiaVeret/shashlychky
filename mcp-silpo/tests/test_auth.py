@@ -33,7 +33,7 @@ async def test_tokens_and_client_info_do_not_overwrite_each_other(tmp_path):
     await st.set_tokens(OAuthToken(access_token="A", token_type="Bearer"))
     assert (await st.get_client_info()).client_id == "cid"
     assert (await st.get_tokens()).access_token == "A"
-    assert set(json.loads((tmp_path / "t.json").read_text())) == {"tokens", "client_info"}
+    assert set(json.loads((tmp_path / "t.json").read_text())) == {"tokens", "client_info", "saved_at"}
 
 
 async def test_new_storage_object_reads_what_the_previous_one_wrote(tmp_path):
@@ -92,3 +92,42 @@ def test_make_auth_registers_expected_redirect_and_public_client(tmp_path):
     assert [str(u) for u in meta.redirect_uris] == [silpo_auth.REDIRECT_URI]
     assert meta.token_endpoint_auth_method == "none"  # публічний клієнт: секрету немає, захист - PKCE
     assert "refresh_token" in meta.grant_types
+
+
+async def test_expiry_time_is_saved_with_tokens(tmp_path):
+    import time
+    st = FileTokenStorage(tmp_path / "t.json")
+    assert st.expiry_time() is None
+    before = time.time()
+    await st.set_tokens(OAuthToken(access_token="A", token_type="Bearer", expires_in=100))
+    assert before + 100 <= st.expiry_time() <= time.time() + 100
+
+
+async def test_provider_knows_expiry_after_reload_so_it_will_refresh(tmp_path):
+    """Регресія: SDK сам після завантаження з файлу вважав би токен вічно дійсним."""
+    st = FileTokenStorage(tmp_path / "t.json")
+    await st.set_client_info(OAuthClientInformationFull(
+        client_id="cid", redirect_uris=[silpo_auth.REDIRECT_URI], client_name="x"))
+    await st.set_tokens(OAuthToken(access_token="A", token_type="Bearer", expires_in=100, refresh_token="R"))
+    data = json.loads((tmp_path / "t.json").read_text())
+    data["saved_at"] -= 1000  # токен отримано 1000 с тому, а діє 100 с
+    (tmp_path / "t.json").write_text(json.dumps(data))
+
+    auth = make_auth("https://mcp.silpo.ua/mcp", st)
+    await auth._initialize()
+    assert not auth.context.is_token_valid()
+    assert auth.context.can_refresh_token()  # отже SDK піде оновлювати токен, а не відкриватиме браузер
+
+
+async def test_provider_treats_fresh_token_as_valid_after_reload(tmp_path):
+    st = FileTokenStorage(tmp_path / "t.json")
+    await st.set_tokens(OAuthToken(access_token="A", token_type="Bearer", expires_in=100))
+    auth = make_auth("https://mcp.silpo.ua/mcp", st)
+    await auth._initialize()
+    assert auth.context.is_token_valid()
+
+
+async def test_provider_without_known_expiry_keeps_sdk_default(tmp_path):
+    auth = make_auth("https://mcp.silpo.ua/mcp", FileTokenStorage(tmp_path / "t.json"))
+    await auth._initialize()
+    assert auth.context.token_expiry_time is None

@@ -8,6 +8,7 @@ TokenStorage на користувача (БД), решта коду не змі
 """
 import asyncio
 import json
+import time
 import webbrowser
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -41,6 +42,18 @@ class FileTokenStorage(TokenStorage):
 
     async def set_tokens(self, tokens: OAuthToken) -> None:
         self._write("tokens", tokens)
+        data = self._read()
+        data["saved_at"] = time.time()  # SDK не пам'ятає, коли токен отримано; без цього після перезапуску
+        self.path.write_text(json.dumps(data))  # він вважав би токен вічно дійсним
+        self.path.chmod(0o600)
+
+    def expiry_time(self) -> float | None:
+        """Unix-час, коли збережений токен спливає (None, якщо невідомо)."""
+        data = self._read()
+        expires_in = data.get("tokens", {}).get("expires_in")
+        if expires_in is None or "saved_at" not in data:
+            return None
+        return data["saved_at"] + int(expires_in)
 
     async def get_client_info(self) -> OAuthClientInformationFull | None:
         d = self._read().get("client_info")
@@ -79,10 +92,25 @@ async def wait_for_callback() -> tuple[str, str | None]:
         server.close()
 
 
+class SilpoOAuthProvider(OAuthClientProvider):
+    """OAuthClientProvider, який після завантаження токенів із файлу знає, коли вони спливають.
+
+    Без цього SDK вважає завантажений токен вічно дійсним, отримує 401 після спливання
+    і відкриває браузер для повного входу замість тихого оновлення через refresh_token.
+    Спирається на приватний метод `_initialize` SDK (mcp<2).
+    """
+
+    async def _initialize(self) -> None:
+        await super()._initialize()
+        expiry = getattr(self.context.storage, "expiry_time", lambda: None)()
+        if expiry is not None:
+            self.context.token_expiry_time = expiry
+
+
 def make_auth(server_url: str, storage: TokenStorage | None = None,
               redirect_handler=open_in_browser, callback_handler=wait_for_callback) -> OAuthClientProvider:
     """Провайдер авторизації для streamablehttp_client(url, auth=...)."""
-    return OAuthClientProvider(
+    return SilpoOAuthProvider(
         server_url=server_url,
         client_metadata=OAuthClientMetadata(
             client_name="Cook 'n' Love",
