@@ -102,4 +102,8 @@ async def test_add_products_verified_ok_even_with_stale_slot():
     async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
         silpo = SilpoClient(session)
         egg = (await silpo.find_products(["яйця"], limit=1))["яйця"][0]
-        assert (await silpo.add_products_verified([(egg, 1)])).ok
+        r = await silpo.add_products_verified([(egg, 1)])
+        # мінімальна сума замовлення - не помилка додавання, а окрема перешкода оформленню
+        assert r.ok and r.errors == []
+        assert [v["message"] for v in r.checkout_issues] == ["order.cost.min"]
+        assert r.checkout_issues[0]["context"]["orderCostMin"] == 799

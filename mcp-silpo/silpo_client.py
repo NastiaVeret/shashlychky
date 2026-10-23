@@ -37,7 +37,9 @@ async def connect(url: str):
 class AddResult:
     added: list[str]
     missing: list[str]  # productId, яких немає в кошику після додавання
-    errors: list[dict]  # error-level validations[] з кошика
+    errors: list[dict]  # помилки самого додавання: слот, залишок товару тощо
+    checkout_issues: list[dict]  # помилки рівня замовлення, наприклад order.cost.min (мінімальна сума):
+    #                              товар додано нормально, але оформити кошик поки не можна
 
     @property
     def ok(self) -> bool:
@@ -122,9 +124,11 @@ class SilpoClient:
         _, cart = await self.cart()
         in_cart = {l["productId"] for s in cart["shipments"] for l in s["products"]}
         wanted = [p["id"] for p, _ in items]
-        errors = [v for v in cart["calculation"]["validations"] if v["level"] == "error"]
+        problems = [v for v in cart["calculation"]["validations"] if v["level"] == "error"]
         return AddResult(added=[i for i in wanted if i in in_cart],
-                         missing=[i for i in wanted if i not in in_cart], errors=errors)
+                         missing=[i for i in wanted if i not in in_cart],
+                         errors=[v for v in problems if v["type"] != "order"],
+                         checkout_issues=[v for v in problems if v["type"] == "order"])
 
     async def _lines(self) -> dict[str, dict]:
         """productId -> рядок кошика (з id рядка, потрібним для update/remove)."""

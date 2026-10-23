@@ -29,13 +29,22 @@ async def main() -> None:
         print("товар:", item["name"], item["price"], "stock", item["stock"], "weighted", item["weighted"])
         try:
             r = await silpo.add_products_verified([(item, 1)])
-            print("додавання: додано", r.added, "не додано", r.missing, "помилки", r.errors, "ok", r.ok)
+            print("додавання: додано", r.added, "не додано", r.missing, "помилки", r.errors, "ok", r.ok,
+                  "| перешкоди оформленню:", [(v["message"], v["context"]) for v in r.checkout_issues])
 
             ghost = {**item, "id": "00000000-0000-4000-8000-0000000000ff"}
             r2 = await silpo.add_products_verified([(ghost, 1)])
             print("неіснуючий товар: не додано", r2.missing, "ok", r2.ok, "(очікуємо ok False)")
 
             print("set_quantity(2):", await silpo.set_quantity(item["id"], 2))
+
+            # Підняти суму вище мінімальної, щоб побачити, чи з'являться посилання на оформлення
+            min_cost = next((v["context"]["orderCostMin"] for v in r.checkout_issues
+                             if v["message"] == "order.cost.min"), None)
+            if min_cost:
+                qty = -(-min_cost // item["price"])  # ceil
+                qty = min(int(qty), item["stock"])
+                print(f"мінімальна сума {min_cost}, ставлю кількість {qty}:", await silpo.set_quantity(item["id"], qty))
             _, cart = await silpo.cart()
             print("сума:", cart["calculation"]["productsTotal"],
                   "validations:", [v["message"] for v in cart["calculation"]["validations"]])

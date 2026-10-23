@@ -21,6 +21,7 @@ COMPANY_ID = "1ec88c5d-a050-669c-8467-570a157f3e31"
 CART_ID = "b08f0447-b51c-4341-ac4c-58e97cd2d5d1"
 SLOT = {"start": "2026-10-23T13:30:00+00:00", "end": "2026-10-23T15:00:00+00:00"}
 
+MIN_ORDER_COST = 799  # як у реальному Сільпо для доставки
 STALE_SLOT = {"start": "2026-10-20T13:30:00+00:00", "end": "2026-10-20T15:00:00+00:00"}
 
 mcp = FastMCP("silpo-mock", host="0.0.0.0", port=8000)
@@ -61,7 +62,7 @@ def silpo_get_shopping_cart_by_id(shoppingCartId: str) -> dict:
     lines, total, validations = [], 0.0, []
     if _cart_slot != SLOT:
         validations.append({"level": "error", "type": "timeslot", "message": "timeslot.not_found", "context": []})
-    for line_id, item in _cart.items():
+    for line_id, item in list(_cart.items()):
         p = _by_id(item["productId"])
         lines.append({"id": line_id, "productId": p["id"], "companyId": COMPANY_ID,
                       "name": p["name"], "quantity": item["quantity"], "price": p["price"]})
@@ -69,6 +70,9 @@ def silpo_get_shopping_cart_by_id(shoppingCartId: str) -> dict:
         if item["quantity"] > p["stock"]:
             validations.append({"level": "error", "type": "product",
                                 "message": "product.offer.stock.max", "context": {"stock": p["stock"]}})
+    if 0 < total < MIN_ORDER_COST:
+        validations.append({"level": "error", "type": "order", "message": "order.cost.min",
+                            "context": {"orderCostMin": MIN_ORDER_COST}})
     return {"success": True, "cart": {
         "id": shoppingCartId, "deliveryType": "DeliveryHome", "timeslot": _cart_slot,
         "address": {"addressType": "flat", "latitude": "49.82", "longitude": "24.01", "city": "Львів"},
