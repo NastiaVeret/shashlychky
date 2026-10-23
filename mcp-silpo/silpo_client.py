@@ -6,10 +6,30 @@
   success навіть коли товар не додався.
 """
 import json
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+from silpo_auth import make_auth
+
+
+@asynccontextmanager
+async def connect(url: str):
+    """Підключення до mock (localhost, без логіну) або до реального Сільпо (OAuth).
+
+        async with connect(os.environ["SILPO_MCP_URL"]) as silpo:
+            found = await silpo.find_products(["яйця"])
+    """
+    local = urlparse(url).hostname in ("localhost", "127.0.0.1")
+    auth = None if local else make_auth(url)
+    async with streamablehttp_client(url, auth=auth) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            yield SilpoClient(session)
 
 
 @dataclass
@@ -67,3 +87,46 @@ class SilpoClient:
         errors = [v for v in cart["calculation"]["validations"] if v["level"] == "error"]
         return AddResult(added=[i for i in wanted if i in in_cart],
                          missing=[i for i in wanted if i not in in_cart], errors=errors)
+
+    async def _lines(self) -> dict[str, dict]:
+        """productId -> рядок кошика (з id рядка, потрібним для update/remove)."""
+        _, cart = await self.cart()
+        return {l["productId"]: l for s in cart["shipments"] for l in s["products"]}
+
+    async def set_quantity(self, product_id: str, quantity: float) -> bool:
+        """Нова АБСОЛЮТНА кількість товару, що вже в кошику. True, якщо зміна застосувалась."""
+        line = (await self._lines()).get(product_id)
+        if line is None:
+            return False
+        cart_id, _ = await self.cart()
+        await self.call("silpo_update_cart_products",
+                        {"shoppingCartId": cart_id, "products": [{"id": line["id"], "quantity": quantity}]})
+        return (await self._lines()).get(product_id, {}).get("quantity") == quantity
+
+    async def remove_products(self, product_ids: list[str]) -> list[str]:
+        """Видаляє товари за productId. Повертає ті, що лишились у кошику (мало бути порожньо)."""
+        lines = await self._lines()
+        ids = [{"id": lines[p]["id"]} for p in product_ids if p in lines]
+        if ids:
+            cart_id, _ = await self.cart()
+            await self.call("silpo_remove_cart_products", {"shoppingCartId": cart_id, "products": ids})
+        after = await self._lines()
+        return [p for p in product_ids if p in after]
+
+    async def similar_products(self, product: dict, limit: int = 5) -> list[dict]:
+        """Альтернативи товару (F10). Беруться з того самого свіжого контексту."""
+        ctx = await self.search_context()
+        res = await self.call("silpo_get_similar_products", {**ctx, "slug": product["slug"], "limit": limit})
+        return res.get("products", [])
+
+    async def food_restrictions(self) -> list:
+        return (await self.call("silpo_get_my_food_restrictions")).get("restrictions", [])
+
+    async def checkout_links(self) -> dict[str, str | None]:
+        """Посилання на оформлення в Сільпо (оплата й доставка на їхньому боці).
+        НЕ перевірено на реальному сервері: поля за описом tool'а, місце в відповіді може відрізнятись."""
+        cart_id, _ = await self.cart()
+        res = await self.call("silpo_get_shopping_cart_by_id", {"shoppingCartId": cart_id})
+        cart = res.get("cart", {})
+        return {"web": res.get("checkoutWebLink") or cart.get("checkoutWebLink"),
+                "mobile": res.get("checkoutMobileLink") or cart.get("checkoutMobileLink")}

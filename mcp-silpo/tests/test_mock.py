@@ -61,3 +61,18 @@ async def test_client_detects_product_that_was_not_added():
         assert result.added == [egg["id"]]
         assert result.missing == [ghost["id"]]
         assert not result.ok
+
+
+async def test_client_set_quantity_remove_and_similar():
+    from silpo_client import SilpoClient
+    mock_server._cart.clear()
+    async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
+        silpo = SilpoClient(session)
+        found = await silpo.find_products(["яйця курячі"], limit=1)
+        egg = found["яйця курячі"][0]
+        await silpo.add_products_verified([(egg, 1)])
+        assert await silpo.set_quantity(egg["id"], 3)
+        assert not await silpo.set_quantity("nope", 3)
+        assert [p["name"] for p in await silpo.similar_products(egg)] == ["Яйця перепелині «Премія»®"]
+        assert await silpo.remove_products([egg["id"]]) == []
+        assert await silpo.food_restrictions() == []
