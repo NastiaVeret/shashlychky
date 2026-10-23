@@ -194,7 +194,7 @@ class SilpoClient:
     async def checkout_links(self) -> dict[str, str | None]:
         """Посилання на оформлення в Сільпо (оплата й доставка на їхньому боці).
         Слот оновлюється прямо перед видачею, бо за час між складанням кошика й оформленням він міг протухнути.
-        НЕ перевірено на реальному сервері: поля за описом tool'а, місце в відповіді може відрізнятись."""
+        Посилання з'являються лише для кошика, який можна оформити (сума не нижча за мінімальну)."""
         await self.ensure_valid_slot()
         cart_id, _ = await self.cart()
         res = await self.call("silpo_get_shopping_cart_by_id", {"shoppingCartId": cart_id})
