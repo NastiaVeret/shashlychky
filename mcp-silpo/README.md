@@ -14,7 +14,6 @@
 | Помилки: `SilpoError`, повтори при 429 | зроблено; реальної відповіді на 429 не бачили |
 | Фасування (F9), вибір заміни (F10) | передано іншим, див. нижче |
 | Створення кошика новому користувачеві, вхід для багатьох користувачів (БД) | не зроблено |
-| Docker | `Dockerfile` не перевірявся, для запуску не потрібен |
 
 ## Навіщо mock
 Реальний сервер вимагає логін акаунтом Сільпо (телефон + OTP), віддає змінні дані й має ліміти (429).
@@ -27,8 +26,6 @@ uv sync
 uv run python mock_server.py          # http://localhost:8000/mcp
 SILPO_MCP_URL=http://localhost:8000/mcp uv run python client_example.py
 uv run pytest
-# або Docker
-docker build -t mcp-silpo-mock . && docker run -p 8000:8000 mcp-silpo-mock
 ```
 
 ## Tools у mock
