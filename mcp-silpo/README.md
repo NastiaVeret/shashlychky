@@ -34,12 +34,16 @@ docker build -t mcp-silpo-mock . && docker run -p 8000:8000 mcp-silpo-mock
 Реальний сервер має 40 tools; решта (доставка, лояльність, профіль тощо) у mock не реалізована.
 
 ## Важливо знати (з реальних викликів)
-- Усі пошукові tools потребують контексту `branchId`, `deliveryType`, `timeslotStart/End`. Беруться з `silpo_get_shopping_cart_by_id`.
-  Слот має бути актуальним (`silpo_get_time_slots`), інакше `stock` усіх товарів = 0.
+- Усі пошукові tools потребують контексту `branchId`, `deliveryType`, `timeslotStart/End`. Слот кошика може бути в минулому,
+  а за описом tool'ів з недійсним слотом `stock` усіх товарів = 0, тому слот беремо зі `silpo_get_time_slots`.
 - Для `weighted: true` товарів `step` і `quantity` у **кілограмах**; `displayRatio` лише для показу.
-- `silpo_add_cart_products` повертає `success: true` навіть якщо товар не додано. Завжди перечитуй кошик.
+- `silpo_add_cart_products` повертає `success: true` навіть якщо товар не додано.
 - `silpo_update_cart_products` приймає **абсолютну** кількість і id **рядка кошика**, а не `productId`.
 - **Складу й алергенів у картці товару немає.** Є лише калорії та БЖВ (`attributes`). Це обмежує F11.
+
+## Клієнтська обгортка `silpo_client.py`
+`SilpoClient` бере свіжий слот і перевіряє додавання: `add_products_verified()` перечитує кошик і повертає
+`AddResult(added, missing, errors)`. Користуйтесь нею замість прямих викликів.
 
 ## Авторизація реального сервера (OAuth 2.1 + PKCE)
 Користувач входить через `auth.silpo.ua`, клієнт отримує токен і шле `Authorization: Bearer ...`.

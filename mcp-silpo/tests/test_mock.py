@@ -47,3 +47,17 @@ async def _unknown_product_silently_ignored(session):
         {"productId": "nope", "companyId": "c", "branchId": "b", "quantity": 1}]})
     cart = (await call(session, "silpo_get_shopping_cart_by_id", {"shoppingCartId": mock_server.CART_ID}))["cart"]
     assert cart["shipments"][0]["products"] == []
+
+
+async def test_client_detects_product_that_was_not_added():
+    from silpo_client import SilpoClient
+    mock_server._cart.clear()
+    async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
+        silpo = SilpoClient(session)
+        found = await silpo.find_products(["яйця"], limit=1)
+        egg = found["яйця"][0]
+        ghost = {**egg, "id": "00000000-0000-4000-8000-0000000000ff"}  # такого товару немає
+        result = await silpo.add_products_verified([(egg, 1), (ghost, 1)])
+        assert result.added == [egg["id"]]
+        assert result.missing == [ghost["id"]]
+        assert not result.ok
