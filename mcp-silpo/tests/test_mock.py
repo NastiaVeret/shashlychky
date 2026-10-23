@@ -160,3 +160,87 @@ async def test_call_gives_up_after_all_retries(monkeypatch):
     with pytest.raises(SilpoError):
         await SilpoClient(session).call("x")
     assert session.calls == 4
+
+
+# ---------- додаткові перевірки самого mock ----------
+
+async def _tool(name, args=None):
+    async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as s:
+        return await call(s, name, args)
+
+
+async def test_mock_search_matches_comma_and_dot_decimals():
+    mock_server._reset()
+    for q in ("молоко 2.5%", "молоко 2,5%"):
+        res = await _tool("silpo_find_products_batch", {**CTX, "products": [q]})
+        assert res["queries"][0]["totalFound"] == 3  # 2 справжні + вигаданий безлактозний
+
+
+async def test_mock_search_limit_and_total_found():
+    mock_server._reset()
+    res = await _tool("silpo_find_products_batch", {**CTX, "products": ["яйця"], "limit": 1})
+    q = res["queries"][0]
+    assert len(q["products"]) == 1 and q["totalFound"] == 2
+
+
+async def test_mock_search_no_match_is_empty_not_error():
+    res = await _tool("silpo_find_products_batch", {**CTX, "products": ["тетраедр"]})
+    assert res["success"] and res["queries"][0]["products"] == []
+
+
+async def test_mock_all_blank_queries_dropped():
+    res = await _tool("silpo_find_products_batch", {**CTX, "products": ["", "  "]})
+    assert res["queries"] == [] and res["meta"]["droppedCount"] == 2
+
+
+async def test_mock_product_details_known_and_unknown_slug():
+    ok = await _tool("silpo_get_product_details", {**CTX, "slug": "moloko-galychyna-ultrapasteryzovane-2-5-815590"})
+    assert ok["product"]["attributes"]["Білки (г)"] == 2.8
+    assert "Склад" not in ok["product"]["attributes"]  # як у реальному Сільпо: складу й алергенів немає
+    bad = await _tool("silpo_get_product_details", {**CTX, "slug": "nope"})
+    assert bad["success"] is False
+
+
+async def test_mock_adding_same_product_twice_is_an_error():
+    mock_server._reset()
+    async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as s:
+        egg = (await call(s, "silpo_find_products_batch", {**CTX, "products": ["яйця курячі"]}))["queries"][0]["products"][0]
+        item = {"productId": egg["id"], "companyId": egg["companyId"], "branchId": egg["branchId"], "quantity": 1}
+        assert (await call(s, "silpo_add_cart_products", {"shoppingCartId": "c", "products": [item]}))["success"]
+        again = await call(s, "silpo_add_cart_products", {"shoppingCartId": "c", "products": [item]})
+        assert again["success"] is False
+
+
+async def test_mock_out_of_stock_product_is_marked_unavailable():
+    res = await _tool("silpo_find_products_batch", {**CTX, "products": ["безлактозне"]})
+    p = res["queries"][0]["products"][0]
+    assert p["available"] is False and p["stock"] == 0
+
+
+async def test_mock_similar_excludes_the_product_itself():
+    res = await _tool("silpo_get_similar_products", {**CTX, "slug": "yaitsia-kuriachi-shanychi-s0-931223"})
+    assert all(p["slug"] != "yaitsia-kuriachi-shanychi-s0-931223" for p in res["products"])
+    assert (await _tool("silpo_get_similar_products", {**CTX, "slug": "nope"}))["success"] is False
+
+
+async def test_mock_stock_overflow_surfaces_as_validation_not_error():
+    from silpo_client import SilpoClient
+    mock_server._reset()
+    async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
+        silpo = SilpoClient(session)
+        egg = (await silpo.find_products(["яйця курячі"], limit=1))["яйця курячі"][0]
+        r = await silpo.add_products_verified([(egg, 999)])
+        assert [v["message"] for v in r.errors] == ["product.offer.stock.max"] and not r.ok
+
+
+async def test_mock_checkout_links_appear_only_for_valid_orderable_cart():
+    from silpo_client import SilpoClient
+    mock_server._reset()
+    async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
+        silpo = SilpoClient(session)
+        egg = (await silpo.find_products(["яйця курячі"], limit=1))["яйця курячі"][0]
+        await silpo.add_products_verified([(egg, 1)])
+        assert (await silpo.checkout_links()) == {"web": None, "mobile": None}  # менше мінімальної суми
+        await silpo.set_quantity(egg["id"], 6)  # 6 * 138.03 > 799
+        links = await silpo.checkout_links()
+        assert links["web"] and links["mobile"]

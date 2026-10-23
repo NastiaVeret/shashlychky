@@ -73,7 +73,11 @@ def silpo_get_shopping_cart_by_id(shoppingCartId: str) -> dict:
     if 0 < total < MIN_ORDER_COST:
         validations.append({"level": "error", "type": "order", "message": "order.cost.min",
                             "context": {"orderCostMin": MIN_ORDER_COST}})
-    return {"success": True, "cart": {
+    links = {}
+    if total >= MIN_ORDER_COST and _cart_slot == SLOT:  # як у реалі: посилання лише для кошика, який можна оформити
+        links = {"checkoutWebLink": "https://silpo.ua/checkout-new",
+                 "checkoutMobileLink": "https://link.silpo.ua/mock"}
+    return {"success": True, **links, "cart": {
         "id": shoppingCartId, "deliveryType": "DeliveryHome", "timeslot": _cart_slot,
         "address": {"addressType": "flat", "latitude": "49.82", "longitude": "24.01", "city": "Львів"},
         "shipments": [{"id": shoppingCartId, "companyId": COMPANY_ID, "branchId": BRANCH_ID, "products": lines}],

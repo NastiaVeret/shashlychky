@@ -66,9 +66,16 @@ class SilpoClient:
 
     async def call(self, name: str, args: dict | None = None) -> dict:
         """Викликає tool і розбирає JSON. При ліміті запитів (429) повторює з паузою 1/2/4 с.
-        Формат відповіді на 429 у реального сервера не бачили, тому ліміт розпізнається за текстом."""
-        for attempt, delay in enumerate((*RETRY_DELAYS, None)):
-            result = await self.session.call_tool(name, args or {})
+        Ліміт розпізнається за текстом і в відповіді tool'а, і у винятку (як саме його віддає
+        реальний сервер, невідомо). Решта винятків і помилок пробиваються одразу."""
+        for delay in (*RETRY_DELAYS, None):
+            try:
+                result = await self.session.call_tool(name, args or {})
+            except Exception as e:  # noqa: BLE001
+                if delay is not None and RATE_LIMIT.search(f"{type(e).__name__} {e}"):
+                    await asyncio.sleep(delay)
+                    continue
+                raise
             text = result.content[0].text if result.content else ""
             try:
                 data = json.loads(text)
