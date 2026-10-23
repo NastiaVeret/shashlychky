@@ -2,6 +2,7 @@
 
 - контекст пошуку (branchId, deliveryType, слот) береться зі СВІЖОГО слота,
   а не зі слота кошика, який може бути в минулому (тоді stock усіх товарів = 0);
+- слот у самому кошику оновлюється на найближчий доступний (ensure_valid_slot);
 - додавання в кошик перевіряється перечитуванням кошика, бо сервер повертає
   success навіть коли товар не додався.
 """
@@ -70,6 +71,42 @@ class SilpoClient:
         return {"branchId": branch_id, "deliveryType": delivery_type,
                 "timeslotStart": slot["start"], "timeslotEnd": slot["end"]}
 
+    async def ensure_valid_slot(self) -> bool:
+        """Гарантує, що слот КОШИКА дійсний (слот кошика швидко протухає, і тоді
+        Сільпо рахує кошик невалідним: timeslot.not_found і stock 0 в усіх товарів).
+
+        Адреса, магазин і тип доставки лишаються користувача, змінюється лише вікно:
+        на найближче доступне. Нічого не пише, якщо слот і так дійсний. Повертає True,
+        якщо після цього в кошику немає помилки слота.
+        """
+        cart_id, cart = await self.cart()
+        delivery_type = cart["deliveryType"]
+        shipment = cart["shipments"][0]
+        # для експрес-доставки слоти запитуються як для звичайної (за описом tool'а)
+        slot_type = "DeliveryHome" if delivery_type == "DeliveryExpressByPromise" else delivery_type
+        slots = await self.call("silpo_get_time_slots", {
+            "branchId": shipment["branchId"], "deliveryTypes": [slot_type],
+            "start": datetime.now(timezone.utc).isoformat(), "limit": 10})
+        available = [s for s in slots["slots"] if s["available"]]
+        if not available:
+            raise RuntimeError("Немає доступних слотів доставки")
+
+        def same(a: str, b: str) -> bool:
+            return datetime.fromisoformat(a) == datetime.fromisoformat(b)
+
+        current = cart.get("timeslot") or {}
+        if current and any(same(current["start"], s["start"]) and same(current["end"], s["end"])
+                           for s in available):
+            return True
+        await self.call("silpo_update_shopping_cart", {
+            "shoppingCartId": cart_id, "deliveryType": delivery_type,
+            "timeslot": {"start": available[0]["start"], "end": available[0]["end"]},
+            "address": cart["address"],  # точно як у кошику, за вимогою tool'а
+            "shipments": [{"companyId": shipment["companyId"], "branchId": shipment["branchId"]}]})
+        _, cart = await self.cart()
+        return not any(v["type"] == "timeslot" and v["level"] == "error"
+                       for v in cart["calculation"]["validations"])
+
     async def find_products(self, names: list[str], limit: int = 3) -> dict[str, list[dict]]:
         ctx = await self.search_context()
         found = await self.call("silpo_find_products_batch", {**ctx, "products": names, "limit": limit})
@@ -77,6 +114,7 @@ class SilpoClient:
 
     async def add_products_verified(self, items: list[tuple[dict, float]]) -> AddResult:
         """items: [(товар з пошуку, кількість)]. Для вагових товарів кількість у кг."""
+        await self.ensure_valid_slot()
         cart_id, _ = await self.cart()
         await self.call("silpo_add_cart_products", {"shoppingCartId": cart_id, "products": [
             {"productId": p["id"], "companyId": p["companyId"], "branchId": p["branchId"], "quantity": q}
@@ -124,7 +162,9 @@ class SilpoClient:
 
     async def checkout_links(self) -> dict[str, str | None]:
         """Посилання на оформлення в Сільпо (оплата й доставка на їхньому боці).
+        Слот оновлюється прямо перед видачею, бо за час між складанням кошика й оформленням він міг протухнути.
         НЕ перевірено на реальному сервері: поля за описом tool'а, місце в відповіді може відрізнятись."""
+        await self.ensure_valid_slot()
         cart_id, _ = await self.cart()
         res = await self.call("silpo_get_shopping_cart_by_id", {"shoppingCartId": cart_id})
         cart = res.get("cart", {})

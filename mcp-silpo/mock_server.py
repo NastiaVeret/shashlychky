@@ -21,11 +21,21 @@ COMPANY_ID = "1ec88c5d-a050-669c-8467-570a157f3e31"
 CART_ID = "b08f0447-b51c-4341-ac4c-58e97cd2d5d1"
 SLOT = {"start": "2026-10-23T13:30:00+00:00", "end": "2026-10-23T15:00:00+00:00"}
 
+STALE_SLOT = {"start": "2026-10-20T13:30:00+00:00", "end": "2026-10-20T15:00:00+00:00"}
+
 mcp = FastMCP("silpo-mock", host="0.0.0.0", port=8000)
 
 # стан кошика: id рядка -> {productId, quantity}
 _cart: dict[str, dict] = {}
 _restrictions: list[str] = []
+_cart_slot: dict = dict(STALE_SLOT)  # як у реальному акаунті: слот кошика протух
+
+
+def _reset() -> None:
+    """Для тестів: порожній кошик і протухлий слот."""
+    _cart.clear()
+    _cart_slot.clear()
+    _cart_slot.update(STALE_SLOT)
 
 
 def _by_id(product_id: str) -> dict | None:
@@ -49,6 +59,8 @@ def silpo_get_my_shopping_cart() -> dict:
 def silpo_get_shopping_cart_by_id(shoppingCartId: str) -> dict:
     """Кошик: товари, доставка, слот, підсумки та validations[]."""
     lines, total, validations = [], 0.0, []
+    if _cart_slot != SLOT:
+        validations.append({"level": "error", "type": "timeslot", "message": "timeslot.not_found", "context": []})
     for line_id, item in _cart.items():
         p = _by_id(item["productId"])
         lines.append({"id": line_id, "productId": p["id"], "companyId": COMPANY_ID,
@@ -58,11 +70,21 @@ def silpo_get_shopping_cart_by_id(shoppingCartId: str) -> dict:
             validations.append({"level": "error", "type": "product",
                                 "message": "product.offer.stock.max", "context": {"stock": p["stock"]}})
     return {"success": True, "cart": {
-        "id": shoppingCartId, "deliveryType": "DeliveryHome", "timeslot": SLOT,
+        "id": shoppingCartId, "deliveryType": "DeliveryHome", "timeslot": _cart_slot,
+        "address": {"addressType": "flat", "latitude": "49.82", "longitude": "24.01", "city": "Львів"},
         "shipments": [{"id": shoppingCartId, "companyId": COMPANY_ID, "branchId": BRANCH_ID, "products": lines}],
         "calculation": {"total": round(total, 2), "totalAfterDiscounts": round(total, 2),
                         "productsTotal": round(total, 2), "validations": validations}},
         "loyalty": {"bonusAvailable": 0, "bonusTotal": 0, "bonusRequested": None, "isEnabled": True}}
+
+
+@mcp.tool()
+def silpo_update_shopping_cart(shoppingCartId: str, deliveryType: str, timeslot: dict,
+                               address: dict, shipments: list[dict]) -> dict:
+    """Параметри доставки кошика. У mock міняється лише слот."""
+    _cart_slot.clear()
+    _cart_slot.update(timeslot)
+    return {"success": True}
 
 
 @mcp.tool()
