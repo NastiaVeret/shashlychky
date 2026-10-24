@@ -50,7 +50,7 @@ cd frontend && npm run lint && npm run format:check && npm run build
 Workflows:
 
 - `.github/workflows/ci.yml`: lint, typecheck, tests, build on every PR and push to `main`.
-- `.github/workflows/deploy.yml`: on push to `main`, deploys backend and frontend in parallel.
+- `.github/workflows/deploy.yml`: on push to `main`, deploys the backend, then the frontend (Firebase validates the Cloud Run rewrite target, so order matters).
 - `.github/workflows/preview.yml`: on every PR that touches `frontend/`, deploys a 7-day Firebase preview channel and comments the URL on the PR.
 
 ### One-time GCP / Firebase setup
@@ -102,9 +102,6 @@ Then in GitHub → Settings → Secrets and variables → Actions → Variables:
 | `GCP_SERVICE_ACCOUNT` | `deploy-sa@PROJECT_ID.iam.gserviceaccount.com` |
 
 Optional secret `BACKEND_ENV_VARS` (`KEY=value,KEY2=value2`) for backend environment variables.
-
-The first deploy must run after the backend exists: Firebase validates the Cloud Run service named in the rewrite.
-Run the `Deploy` workflow manually (workflow_dispatch) if the frontend job fails on the very first run, or simply re-run it.
 
 ### Manual frontend deploy from a laptop
 
