@@ -78,7 +78,7 @@ jobs:
             --max-retries 0 --task-timeout 10m --quiet
           gcloud run jobs execute "${MIGRATE_JOB}" --region "${REGION}" --wait --quiet
 
-      - uses: google-github-actions/deploy-cloudrun@v2
+      - uses: google-github-actions/deploy-cloudrun@v3
         with:
           service: ${{ env.BACKEND_SERVICE }}
           region: ${{ env.REGION }}
