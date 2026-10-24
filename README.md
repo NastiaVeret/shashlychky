@@ -18,7 +18,7 @@ recipe card. Each recipe gets a shareable URL `/recipes/<id>`.
 
 LLM practices in `backend/app/services/llm.py`: system prompt separated from user data (products are data, not
 instructions), provider-enforced JSON schema + Pydantic validation, one corrective retry on invalid output, SDK
-one retry with backoff on 429/5xx, 20 s per-attempt timeout, thinking disabled, bounded output tokens, token usage and latency
+12 s per-attempt deadline with one fallback to `gemini-3.5-flash-lite` when the primary is slow or overloaded, thinking disabled, bounded output tokens, token usage and latency
 logged and stored per recipe, graceful 503/502 for the UI.
 
 ## Local development

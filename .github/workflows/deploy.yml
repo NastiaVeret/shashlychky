@@ -87,9 +87,10 @@ jobs:
           secrets: |
             DB_PASSWORD=db-password:latest
             GEMINI_API_KEY=gemini-api-key:latest
+          # env_vars is split on newlines AND commas, and YAML comments inside the block become values.
+          # Keep one KEY=VALUE per line, no commas, no comments.
           env_vars: |
             ENVIRONMENT=production
-            # single origin: deploy-cloudrun splits env_vars on commas as well as newlines
             CORS_ORIGINS=https://${{ env.PROJECT_ID }}.web.app
             DB_HOST=/cloudsql/${{ env.CLOUDSQL_INSTANCE }}
             DB_NAME=${{ env.DB_NAME }}
