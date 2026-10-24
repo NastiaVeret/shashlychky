@@ -24,6 +24,7 @@ in the changed code, not to rewrite it to your taste.
 ## How to work
 
 - Start with `git diff main...HEAD` (or `gh pr diff` for a PR), then read the context around the changed spots.
+- Use the `python-best-practices` and `react-best-practices` skills (`.claude/skills/*/rules/`) as the checklist for idiom-level findings; cite the rule id (e.g. `async-parallel`, `rerender-derive-in-render`) in the finding.
 - Do not comment on formatting: ruff and prettier own that.
 - Do not propose new dependencies or refactoring of unchanged code.
 

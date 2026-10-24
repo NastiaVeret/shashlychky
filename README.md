@@ -154,7 +154,7 @@ The shared configuration lives in the repo and works the same for everyone:
 |---|---|---|
 | Project context | `CLAUDE.md` | Commands, style, architecture decisions, workflow |
 | Per-area rules | `.claude/rules/` | `backend.md`, `frontend.md`, `database.md` load only when touching those folders, `git.md` always |
-| Skills | `.claude/skills/` | `/check` all checks, `/new-endpoint` endpoint by convention, `/new-page` React page, `/migration` Alembic migration, `/pr` commit and PR |
+| Skills | `.claude/skills/` | `/check` all checks, `/new-endpoint` endpoint by convention, `/new-page` React page, `/migration` Alembic migration, `/pr` commit and PR, `python-best-practices` and `react-best-practices` idiom guides (loaded automatically when relevant) |
 | Agents | `.claude/agents/` | `reviewer` reviews a diff without changing code, `test-writer` writes tests by the project reference, `frontend-integrator` wires the frontend to the backend API (types, request functions, hooks, pages) |
 | Settings | `.claude/settings.json` | Allowlist for safe commands, deny reading `.env`, auto-format hook after every edit |
 

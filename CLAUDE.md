@@ -25,6 +25,7 @@ npm run lint && npm run format:check && npm run build
 ```
 
 Run everything at once: `/check`. Before opening a PR: `/pr`. Schema change: `/migration`.
+Idiom guides: `python-best-practices` (backend) and `react-best-practices` (frontend) skills; consult them when writing or reviewing non-trivial code.
 After a backend API change, use the `frontend-integrator` agent to bring the frontend types, request functions and hooks in sync.
 
 ## Language and style
