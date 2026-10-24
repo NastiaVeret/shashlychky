@@ -1,0 +1,37 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+*.local
+npm-debug.log*
+
+# Google Cloud
+*-key.json
+.gcloud/
+
+# Claude Code: per-developer local settings
+.claude/settings.local.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+.firebaserc

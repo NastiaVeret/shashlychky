@@ -1,0 +1,38 @@
+---
+paths:
+  - "frontend/**"
+---
+
+# Frontend (React + TypeScript + Vite)
+
+## Layout
+
+```
+src/main.tsx            entry point
+src/App.tsx             providers (QueryClient, Router) and routes
+src/api/client.ts       apiFetch, ApiError, base URL
+src/api/<resource>.ts   request functions + TS response types (mirror of Pydantic models)
+src/pages/              route pages, one page = one file <Name>Page.tsx
+src/components/         reusable components (create when needed)
+src/hooks/              custom hooks, incl. useQuery/useMutation wrappers (create when needed)
+```
+
+## Rules
+
+- Function components only, named exports: `export function HomePage()`.
+- Backend data only via `@tanstack/react-query` and functions from `src/api/`. No `fetch`/`axios` in components.
+- Query keys are arrays, first element = resource: `['orders']`, `['orders', id]`.
+- API response types live in `src/api/` as `interface`s named after the backend Pydantic models.
+- `any` is forbidden. Unknown shape: `unknown` plus narrowing.
+- `erasableSyntaxOnly` is on: no `enum`, no constructor parameter properties, no `namespace`. Use an `as const` object or a union of literals instead of enum.
+- Styles: plain CSS next to the component (`Name.css`) or in `App.css`. No new CSS library without discussion.
+- UI text is in Ukrainian. Keep it as plain strings in JSX; i18n is not needed yet.
+- Environment variables only with the `VITE_` prefix, read via `import.meta.env`. No secrets in the frontend.
+- API calls use relative paths (`/api/v1/...`). In production Firebase Hosting rewrites `/api/**` to the Cloud Run backend (`firebase.json`); do not hardcode backend URLs.
+- `firebase.json` is deployment config: do not change it without discussing with the team.
+
+## Pre-commit check
+
+```bash
+npm run format && npm run lint && npm run build
+```

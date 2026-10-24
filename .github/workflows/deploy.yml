@@ -1,0 +1,102 @@
+# Deploy on push to main:
+#   backend  -> Google Cloud Run (Docker image via Artifact Registry)
+#   frontend -> Firebase Hosting (static build; /api/** is rewritten to the Cloud Run backend)
+# Auth: Workload Identity Federation (no JSON keys).
+#
+# Configure in GitHub → Settings → Secrets and variables → Actions → Variables:
+#   GCP_PROJECT_ID                 - GCP / Firebase project id
+#   GCP_REGION                     - Cloud Run region, e.g. europe-central2
+#   GCP_ARTIFACT_REPO              - Artifact Registry (docker) repository name, e.g. shashlychky
+#   GCP_WORKLOAD_IDENTITY_PROVIDER - projects/<num>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
+#   GCP_SERVICE_ACCOUNT            - deploy-sa@<project>.iam.gserviceaccount.com
+# Secrets (optional):
+#   BACKEND_ENV_VARS               - KEY1=val1,KEY2=val2 for the backend
+#
+# GCP setup steps are described in README.md ("Deployment" section).
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+  REPO: ${{ vars.GCP_ARTIFACT_REPO }}
+  BACKEND_SERVICE: shashlychky-backend
+
+jobs:
+  backend:
+    name: Backend → Cloud Run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & push image
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${BACKEND_SERVICE}"
+          docker build -t "${IMAGE}:${GITHUB_SHA}" -t "${IMAGE}:latest" backend
+          docker push --all-tags "${IMAGE}"
+          echo "IMAGE=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.BACKEND_SERVICE }}
+          region: ${{ env.REGION }}
+          image: ${{ env.IMAGE }}
+          flags: --allow-unauthenticated --port=8080 --min-instances=0 --max-instances=3
+          env_vars: |
+            ENVIRONMENT=production
+            CORS_ORIGINS=https://${{ env.PROJECT_ID }}.web.app,https://${{ env.PROJECT_ID }}.firebaseapp.com
+            ${{ secrets.BACKEND_ENV_VARS }}
+
+  frontend:
+    name: Frontend → Firebase Hosting
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      # Keep the Cloud Run rewrite region in sync with the GCP_REGION variable
+      - name: Set Cloud Run region in firebase.json
+        run: |
+          jq --arg r "$REGION" '(.hosting.rewrites[] | select(.run) | .run.region) = $r' firebase.json > firebase.tmp.json
+          mv firebase.tmp.json firebase.json
+
+      - name: Deploy to Firebase Hosting (live)
+        run: npx --yes firebase-tools@14 deploy --only hosting --project "$PROJECT_ID" --non-interactive --message "$GITHUB_SHA"

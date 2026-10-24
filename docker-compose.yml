@@ -1,0 +1,14 @@
+# Run the backend locally in a container (mimics Cloud Run).
+# The frontend is static and is served by Firebase Hosting in production;
+# locally run it with `npm run dev` in frontend/ (it proxies /api to :8000).
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8080"
+    environment:
+      ENVIRONMENT: docker
+      CORS_ORIGINS: http://localhost:5173
+    env_file:
+      - path: ./backend/.env
+        required: false
