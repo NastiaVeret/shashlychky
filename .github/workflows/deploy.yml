@@ -9,6 +9,8 @@
 #   GCP_ARTIFACT_REPO              - Artifact Registry (docker) repository name, e.g. shashlychky
 #   GCP_WORKLOAD_IDENTITY_PROVIDER - projects/<num>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
 #   GCP_SERVICE_ACCOUNT            - deploy-sa@<project>.iam.gserviceaccount.com
+#   CLOUDSQL_INSTANCE              - <project>:<region>:<instance> (Cloud SQL connection name)
+# Secret Manager (in GCP, not GitHub): db-password = Postgres password for DB_USER
 # Secrets (optional):
 #   BACKEND_ENV_VARS               - KEY1=val1,KEY2=val2 for the backend
 #
@@ -34,6 +36,10 @@ env:
   REGION: ${{ vars.GCP_REGION }}
   REPO: ${{ vars.GCP_ARTIFACT_REPO }}
   BACKEND_SERVICE: shashlychky-backend
+  MIGRATE_JOB: shashlychky-migrate
+  CLOUDSQL_INSTANCE: ${{ vars.CLOUDSQL_INSTANCE }}
+  DB_NAME: shashlychky
+  DB_USER: postgres
 
 jobs:
   backend:
@@ -58,15 +64,34 @@ jobs:
           docker push --all-tags "${IMAGE}"
           echo "IMAGE=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_ENV"
 
+      # Run database migrations as a Cloud Run Job with the new image, before the service picks it up.
+      # The job fails the workflow if a migration fails, so a broken migration never reaches the service.
+      - name: Run migrations (Cloud Run Job)
+        run: |
+          gcloud run jobs deploy "${MIGRATE_JOB}" \
+            --image "${IMAGE}" \
+            --region "${REGION}" \
+            --set-cloudsql-instances "${CLOUDSQL_INSTANCE}" \
+            --set-env-vars "ENVIRONMENT=production,DB_HOST=/cloudsql/${CLOUDSQL_INSTANCE},DB_NAME=${DB_NAME},DB_USER=${DB_USER}" \
+            --set-secrets "DB_PASSWORD=db-password:latest" \
+            --command alembic --args upgrade,head \
+            --max-retries 0 --task-timeout 10m --quiet
+          gcloud run jobs execute "${MIGRATE_JOB}" --region "${REGION}" --wait --quiet
+
       - uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: ${{ env.BACKEND_SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.IMAGE }}
-          flags: --allow-unauthenticated --port=8080 --min-instances=0 --max-instances=3
+          flags: --allow-unauthenticated --port=8080 --min-instances=0 --max-instances=3 --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }}
+          secrets: |
+            DB_PASSWORD=db-password:latest
           env_vars: |
             ENVIRONMENT=production
             CORS_ORIGINS=https://${{ env.PROJECT_ID }}.web.app,https://${{ env.PROJECT_ID }}.firebaseapp.com
+            DB_HOST=/cloudsql/${{ env.CLOUDSQL_INSTANCE }}
+            DB_NAME=${{ env.DB_NAME }}
+            DB_USER=${{ env.DB_USER }}
             ${{ secrets.BACKEND_ENV_VARS }}
 
   frontend:

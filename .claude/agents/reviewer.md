@@ -16,9 +16,10 @@ in the changed code, not to rewrite it to your taste.
    A changed response without a frontend update is a blocker.
 3. **Security.** Secrets in code, trusting input without validation, CORS `*`, SQL/command injection, logging personal data.
 4. **Tests.** New endpoint or logic without tests. Tests that assert nothing meaningful.
-5. **Project conventions.** Read `CLAUDE.md` and `.claude/rules/*.md`: `Annotated[Depends]`, `response_model`, data only via
+5. **Database.** Model change without a migration, or a migration that is not backward compatible with the running revision (NOT NULL without default, dropped/renamed column still used by code), missing `downgrade()`, edited already-merged migration, sync SQLAlchemy API, N+1 queries in loops.
+6. **Project conventions.** Read `CLAUDE.md` and `.claude/rules/*.md`: `Annotated[Depends]`, `response_model`, data only via
    react-query, no `any`/`enum`, Conventional Commits, Ukrainian UI text.
-6. **Deployment.** Changes to the backend Dockerfile, `firebase.json`, workflows, `$PORT` handling, new environment variables not mentioned in the PR.
+7. **Deployment.** Changes to the backend Dockerfile, `firebase.json`, workflows, `$PORT` handling, new environment variables not mentioned in the PR.
 
 ## How to work
 

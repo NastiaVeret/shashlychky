@@ -10,6 +10,9 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "httpx>=0.27",
+    "sqlalchemy[asyncio]>=2.0",
+    "psycopg[binary,pool]>=3.2",
+    "alembic>=1.14",
 ]
 
 [dependency-groups]
@@ -26,6 +29,14 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# empty migrations keep the standard op/sa imports for convenience
+"alembic/versions/*" = ["F401"]
+
+[tool.ruff.lint.isort]
+# the local alembic/ folder must not shadow the alembic package when sorting imports
+known-third-party = ["alembic"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

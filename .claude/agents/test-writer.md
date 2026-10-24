@@ -15,6 +15,7 @@ You write tests for the Shashlychky project. Goal: tests that catch real regress
 - Assert on the response body, not just the status code.
 - Names: `test_<action>_<condition>_<expectation>`, e.g. `test_create_order_without_items_returns_422`.
 - Mock external services and time (`unittest.mock`, `monkeypatch`). No network in tests.
+- Tests touching Postgres take the `db_required` fixture (skips locally without a database, runs in CI). Clean up rows you create, or use unique values, so tests stay independent.
 - After writing, run from `backend/`: `uv run pytest -q <file>`, then `uv run ruff check . && uv run mypy app`.
   Tests must pass ruff and mypy too.
 

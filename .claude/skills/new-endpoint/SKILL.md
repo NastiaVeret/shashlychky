@@ -15,10 +15,12 @@ Before writing anything, read `backend/app/api/v1/health.py` and `backend/tests/
 2. **Router.** `backend/app/api/v1/<resource>.py`: `router = APIRouter(prefix="/<resources>", tags=["<resources>"])`.
    Handlers are `async def`, dependencies via `Annotated[..., Depends(...)]`, `response_model` on every route,
    explicit status codes (`status_code=201` for creation). Errors via `HTTPException` with a clear `detail`.
-   If storage is needed and there is no database yet: a simple in-memory `dict` in `app/services/<resource>.py` with a TODO comment.
+   Persistence: SQLAlchemy model in `app/models/<resource>.py` (import it in `app/models/__init__.py`), queries in
+   `app/services/<resource>.py` taking an `AsyncSession`, handlers get the session via `db: DbSession`.
+   Then create the migration with `/migration add_<resources>_table`.
 3. **Registration.** Add `router.include_router(<resource>.router)` to `backend/app/api/v1/__init__.py`.
 4. **Tests.** `backend/tests/api/v1/test_<resource>.py` (create folders and `__init__.py`). At minimum: a happy path per method
-   and one negative case (422 on invalid data or 404 on a missing id). Use the `client` fixture.
+   and one negative case (422 on invalid data or 404 on a missing id). Use the `client` fixture, plus `db_required` for tests that hit the database.
 5. **Frontend contract.** `frontend/src/api/<resource>.ts`: TS interfaces named after the Pydantic models,
    and request functions using `apiFetch` from `./client`. Do not create components unless asked.
 6. **Verify.** From `backend/`: `uv run ruff format . && uv run ruff check . && uv run mypy app && uv run pytest -q`,

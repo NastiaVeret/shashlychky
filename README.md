@@ -14,9 +14,11 @@ frontend/   React 19 + TypeScript + Vite
 Backend (http://localhost:8000, Swagger at /docs):
 
 ```bash
+docker compose up -d db                # local Postgres 18 on localhost:5432
 cd backend
 cp .env.example .env
 uv sync
+uv run alembic upgrade head            # apply migrations
 uv run uvicorn app.main:app --reload
 ```
 
@@ -28,8 +30,28 @@ npm install
 npm run dev
 ```
 
-Backend in Docker (as in Cloud Run): `docker compose up --build`, then http://localhost:8000.
+Backend in Docker together with the database (as in Cloud Run): `docker compose up --build`, then http://localhost:8000.
 The frontend is static; locally always run it with `npm run dev`.
+
+### Database
+
+PostgreSQL on Cloud SQL in production (`shashlychky:europe-central2:shashlychky`), Postgres 18 in Docker locally.
+ORM: SQLAlchemy 2 (async, psycopg driver). Migrations: Alembic, rules in `.claude/rules/database.md`, workflow in the `/migration` skill.
+
+```bash
+cd backend
+uv run alembic revision --autogenerate -m "add_orders_table"   # after changing models
+uv run alembic upgrade head
+uv run alembic check                                           # CI fails if models and migrations drift
+```
+
+To reach the production database from a laptop use the Cloud SQL Auth Proxy (needs `roles/cloudsql.client`):
+
+```bash
+brew install cloud-sql-proxy
+cloud-sql-proxy shashlychky:europe-central2:shashlychky --port 5433
+# then DB_PORT=5433 DB_PASSWORD=$(gcloud secrets versions access latest --secret db-password) uv run alembic current
+```
 
 ## Checks
 
@@ -44,13 +66,14 @@ cd frontend && npm run lint && npm run format:check && npm run build
 
 | Part | Where | How |
 |---|---|---|
-| Backend | Cloud Run service `shashlychky-backend` | Docker image pushed to Artifact Registry |
+| Backend | Cloud Run service `shashlychky-backend` | Docker image pushed to Artifact Registry; connected to Cloud SQL via unix socket, `DB_PASSWORD` from Secret Manager |
+| Migrations | Cloud Run Job `shashlychky-migrate` | Same image, runs `alembic upgrade head` before the new service revision is deployed |
 | Frontend | Firebase Hosting (`https://PROJECT_ID.web.app`) | Static `dist/` upload; `/api/**` is rewritten to the Cloud Run backend, so frontend and API share one origin and no CORS is needed |
 
 Workflows:
 
 - `.github/workflows/ci.yml`: lint, typecheck, tests, build on every PR and push to `main`.
-- `.github/workflows/deploy.yml`: on push to `main`, deploys the backend, then the frontend (Firebase validates the Cloud Run rewrite target, so order matters).
+- `.github/workflows/deploy.yml`: on push to `main`: build backend image → run migrations job → deploy backend → deploy frontend (Firebase validates the Cloud Run rewrite target, so order matters).
 - `.github/workflows/preview.yml`: on every PR that touches `frontend/`, deploys a 7-day Firebase preview channel and comments the URL on the PR.
 
 ### One-time GCP / Firebase setup
@@ -60,7 +83,16 @@ Replace `PROJECT_ID`, `REGION`, `GITHUB_ORG/REPO`:
 ```bash
 gcloud config set project PROJECT_ID
 gcloud services enable run.googleapis.com artifactregistry.googleapis.com iamcredentials.googleapis.com \
-  firebase.googleapis.com firebasehosting.googleapis.com
+  firebase.googleapis.com firebasehosting.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
+
+# Cloud SQL + Secret Manager (instance created in the console; database and password secret)
+gcloud sql databases create shashlychky --instance shashlychky
+gcloud secrets create db-password --replication-policy=automatic
+printf '%s' '<postgres password>' | gcloud secrets versions add db-password --data-file=-
+# Cloud Run runtime service account must reach Cloud SQL and read the secret
+RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+gcloud projects add-iam-policy-binding PROJECT_ID --member="serviceAccount:${RUNTIME_SA}" --role=roles/cloudsql.client
+gcloud secrets add-iam-policy-binding db-password --member="serviceAccount:${RUNTIME_SA}" --role=roles/secretmanager.secretAccessor
 
 # Add Firebase to the project and create the Hosting site (one-off, needs Firebase CLI: npm i -g firebase-tools)
 firebase login
@@ -100,6 +132,7 @@ Then in GitHub → Settings → Secrets and variables → Actions → Variables:
 | `GCP_ARTIFACT_REPO` | `shashlychky` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/github` |
 | `GCP_SERVICE_ACCOUNT` | `deploy-sa@PROJECT_ID.iam.gserviceaccount.com` |
+| `CLOUDSQL_INSTANCE` | `PROJECT_ID:REGION:INSTANCE`, e.g. `shashlychky:europe-central2:shashlychky` |
 
 Optional secret `BACKEND_ENV_VARS` (`KEY=value,KEY2=value2`) for backend environment variables.
 
@@ -120,8 +153,8 @@ The shared configuration lives in the repo and works the same for everyone:
 | What | Where | Purpose |
 |---|---|---|
 | Project context | `CLAUDE.md` | Commands, style, architecture decisions, workflow |
-| Per-area rules | `.claude/rules/` | `backend.md` and `frontend.md` load only when touching those folders, `git.md` always |
-| Skills | `.claude/skills/` | `/check` all checks, `/new-endpoint` endpoint by convention, `/new-page` React page, `/pr` commit and PR |
+| Per-area rules | `.claude/rules/` | `backend.md`, `frontend.md`, `database.md` load only when touching those folders, `git.md` always |
+| Skills | `.claude/skills/` | `/check` all checks, `/new-endpoint` endpoint by convention, `/new-page` React page, `/migration` Alembic migration, `/pr` commit and PR |
 | Agents | `.claude/agents/` | `reviewer` reviews a diff without changing code, `test-writer` writes tests by the project reference, `frontend-integrator` wires the frontend to the backend API (types, request functions, hooks, pages) |
 | Settings | `.claude/settings.json` | Allowlist for safe commands, deny reading `.env`, auto-format hook after every edit |
 
