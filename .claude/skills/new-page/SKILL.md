@@ -18,7 +18,7 @@ Style reference: `frontend/src/pages/HomePage.tsx` and `frontend/src/api/client.
    if not, tell the user and suggest `/new-endpoint`.
 3. **Route.** Add `<Route path="..." element={<<Name>Page />} />` to `frontend/src/App.tsx`.
    Use `useParams` from `react-router-dom` for path parameters.
-4. **Styles.** Only if needed: `frontend/src/pages/<Name>Page.css`, imported in the component.
+4. **Styles.** Tailwind utilities with the project tokens (`tailwind` skill). No CSS files. Wrap the page in the shared `Layout` via `App.tsx` routes; lazy-load the page with `React.lazy` unless it is the home page.
 5. **Verify.** From `frontend/`: `npm run format && npm run lint && npm run build`.
 
 ## Constraints

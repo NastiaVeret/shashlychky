@@ -9,14 +9,26 @@ frontend/   React 19 + TypeScript + Vite
 .claude/    shared Claude Code configuration (rules, skills, agents, hooks)
 ```
 
+## What it does (v1)
+
+The user lists the products they have at home; the backend asks Gemini (`gemini-2.5-flash-lite`, the cheapest
+model) for one realistic dish as structured JSON (title, ingredients with quantities and "have at home / to buy"
+markers, steps, optional clarifying question), validates it, stores it in Postgres and the React UI renders the
+recipe card. Each recipe gets a shareable URL `/recipes/<id>`.
+
+LLM practices in `backend/app/services/llm.py`: system prompt separated from user data (products are data, not
+instructions), provider-enforced JSON schema + Pydantic validation, one corrective retry on invalid output, SDK
+retries with backoff on 429/5xx, 10 s timeout, thinking disabled, bounded output tokens, token usage and latency
+logged and stored per recipe, graceful 503/502 for the UI.
+
 ## Local development
 
 Backend (http://localhost:8000, Swagger at /docs):
 
 ```bash
-docker compose up -d db                # local Postgres 18 on localhost:5432
+docker compose up -d db                # local Postgres 18 on localhost:5432 (DB_PORT=5434 docker compose up -d db if 5432 is taken)
 cd backend
-cp .env.example .env
+cp .env.example .env                   # put your Gemini API key into GEMINI_API_KEY (https://aistudio.google.com/apikey)
 uv sync
 uv run alembic upgrade head            # apply migrations
 uv run uvicorn app.main:app --reload
@@ -89,10 +101,13 @@ gcloud services enable run.googleapis.com artifactregistry.googleapis.com iamcre
 gcloud sql databases create shashlychky --instance shashlychky
 gcloud secrets create db-password --replication-policy=automatic
 printf '%s' '<postgres password>' | gcloud secrets versions add db-password --data-file=-
+gcloud secrets create gemini-api-key --replication-policy=automatic
+printf '%s' '<gemini api key>' | gcloud secrets versions add gemini-api-key --data-file=-
 # Cloud Run runtime service account must reach Cloud SQL and read the secret
 RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 gcloud projects add-iam-policy-binding PROJECT_ID --member="serviceAccount:${RUNTIME_SA}" --role=roles/cloudsql.client
 gcloud secrets add-iam-policy-binding db-password --member="serviceAccount:${RUNTIME_SA}" --role=roles/secretmanager.secretAccessor
+gcloud secrets add-iam-policy-binding gemini-api-key --member="serviceAccount:${RUNTIME_SA}" --role=roles/secretmanager.secretAccessor
 
 # Add Firebase to the project and create the Hosting site (one-off, needs Firebase CLI: npm i -g firebase-tools)
 firebase login
@@ -154,7 +169,7 @@ The shared configuration lives in the repo and works the same for everyone:
 |---|---|---|
 | Project context | `CLAUDE.md` | Commands, style, architecture decisions, workflow |
 | Per-area rules | `.claude/rules/` | `backend.md`, `frontend.md`, `database.md` load only when touching those folders, `git.md` always |
-| Skills | `.claude/skills/` | `/check` all checks, `/new-endpoint` endpoint by convention, `/new-page` React page, `/migration` Alembic migration, `/pr` commit and PR, `python-best-practices` and `react-best-practices` idiom guides (loaded automatically when relevant) |
+| Skills | `.claude/skills/` | `/check` all checks, `/new-endpoint` endpoint by convention, `/new-page` React page, `/migration` Alembic migration, `/pr` commit and PR, `python-best-practices`, `react-best-practices` and `tailwind` idiom guides (loaded automatically when relevant) |
 | Agents | `.claude/agents/` | `reviewer` reviews a diff without changing code, `test-writer` writes tests by the project reference, `frontend-integrator` wires the frontend to the backend API (types, request functions, hooks, pages) |
 | Settings | `.claude/settings.json` | Allowlist for safe commands, deny reading `.env`, auto-format hook after every edit |
 

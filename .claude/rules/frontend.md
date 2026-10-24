@@ -14,7 +14,8 @@ src/api/client.ts       apiFetch, ApiError, base URL
 src/api/<resource>.ts   request functions + TS response types (mirror of Pydantic models)
 src/pages/              route pages, one page = one file <Name>Page.tsx
 src/components/         reusable components (create when needed)
-src/hooks/              custom hooks, incl. useQuery/useMutation wrappers (create when needed)
+src/hooks/              custom hooks, incl. useQuery/useMutation wrappers
+src/index.css           the only stylesheet: Tailwind import + @theme design tokens
 ```
 
 ## Rules
@@ -25,7 +26,7 @@ src/hooks/              custom hooks, incl. useQuery/useMutation wrappers (creat
 - API response types live in `src/api/` as `interface`s named after the backend Pydantic models.
 - `any` is forbidden. Unknown shape: `unknown` plus narrowing.
 - `erasableSyntaxOnly` is on: no `enum`, no constructor parameter properties, no `namespace`. Use an `as const` object or a union of literals instead of enum.
-- Styles: plain CSS next to the component (`Name.css`) or in `App.css`. No new CSS library without discussion.
+- Styles: Tailwind CSS v4 utilities only (see the `tailwind` skill). Design tokens live in `src/index.css` `@theme`; no other CSS files, no inline styles, no CSS-in-JS. Run `npm run format` so classes are sorted.
 - UI text is in Ukrainian. Keep it as plain strings in JSX; i18n is not needed yet.
 - Environment variables only with the `VITE_` prefix, read via `import.meta.env`. No secrets in the frontend.
 - API calls use relative paths (`/api/v1/...`). In production Firebase Hosting rewrites `/api/**` to the Cloud Run backend (`firebase.json`); do not hardcode backend URLs.

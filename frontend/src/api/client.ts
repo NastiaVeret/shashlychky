@@ -12,13 +12,27 @@ export class ApiError extends Error {
   }
 }
 
+/** Pulls FastAPI's `{"detail": ...}` out of an error body, falling back to a generic message. */
+async function errorMessage(res: Response): Promise<string> {
+  try {
+    const body: unknown = await res.json();
+    if (body && typeof body === 'object' && 'detail' in body) {
+      const detail = (body as { detail: unknown }).detail;
+      if (typeof detail === 'string') return detail;
+    }
+  } catch {
+    // not JSON
+  }
+  return res.status >= 500 ? 'Сервер тимчасово недоступний' : 'Помилка запиту';
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
   });
   if (!res.ok) {
-    throw new ApiError(res.status, await res.text());
+    throw new ApiError(res.status, await errorMessage(res));
   }
   return res.json() as Promise<T>;
 }
