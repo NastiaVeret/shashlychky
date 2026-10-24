@@ -1,0 +1,39 @@
+# Weekly dependency updates. Minor and patch bumps are grouped into one PR per ecosystem;
+# majors come as separate PRs. CI must pass before merging, as for any PR.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      backend-minor:
+        update-types: [minor, patch]
+    labels: [deps, backend]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      frontend-minor:
+        update-types: [minor, patch]
+    labels: [deps, frontend]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        update-types: [minor, patch]
+    labels: [deps, ci]
+    commit-message:
+      prefix: "chore(ci)"

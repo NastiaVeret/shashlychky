@@ -26,6 +26,8 @@ If the user described a change but did not write the model, write it now followi
 ## 3. Generate
 
 ```bash
+make migration m="<slug>"        # from the repo root: upgrade, autogenerate, lint, upgrade, alembic check
+# equivalent by hand, from backend/:
 uv run alembic revision --autogenerate -m "<slug>"
 uv run ruff check --fix alembic/versions && uv run ruff format alembic/versions
 ```

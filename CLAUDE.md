@@ -9,6 +9,19 @@ This file covers only what applies to the whole repo.
 
 ## Commands
 
+The `Makefile` is the entry point (`make help` lists everything):
+
+```bash
+make install      # deps, .env files, pre-commit hooks
+make dev          # Postgres + API (:8000) + Vite (:5173) together
+make check        # everything CI runs (backend, frontend, API contract)
+make migration m="add_orders_table"   # autogenerate + verify a migration
+make types        # regenerate frontend/src/api/schema.d.ts from the backend OpenAPI schema
+make seed         # sample data in the local database
+```
+
+Underlying commands, if you need them directly:
+
 ```bash
 # backend (from backend/)
 uv sync                                  # install dependencies
@@ -41,7 +54,7 @@ After a backend API change, use the `frontend-integrator` agent to bring the fro
 - Configuration only via `Settings` (`backend/app/core/config.py`) and environment variables. Secrets are never committed; in production they come from Secret Manager.
 - Database: PostgreSQL via SQLAlchemy 2 async + Alembic. Every schema change ships with a migration in the same PR; deploy runs migrations before the new revision starts, so migrations must be backward compatible (details in `.claude/rules/database.md`).
 - The frontend talks to the backend only through `frontend/src/api/` and `@tanstack/react-query`. No raw `fetch` in components.
-- API contract: a Pydantic model on the backend ↔ a TypeScript interface in `frontend/src/api/`. Change one, change the other.
+- API contract: Pydantic models on the backend are the source of truth. Frontend types are **generated** into `frontend/src/api/schema.d.ts` by `make types` (openapi-typescript); never hand-write API shapes. CI fails if the committed types are stale.
 - The backend container listens on `$PORT` (Cloud Run). Never hardcode ports in the Dockerfile.
 - LLM: Gemini via `google-genai`, cheapest model by default (`GEMINI_MODEL=gemini-3.1-flash-lite`), structured output validated by Pydantic, key only on the server (`GEMINI_API_KEY` from Secret Manager). Provider code is isolated in `backend/app/services/llm.py` behind the `StructuredLLM` protocol; prompts live in the service that owns the feature.
 - Frontend styling: Tailwind CSS v4 only, tokens in `src/index.css` (see the `tailwind` skill).
@@ -50,7 +63,7 @@ After a backend API change, use the `frontend-integrator` agent to bring the fro
 ## Workflow
 
 1. Branch from `main`: `feat/...`, `fix/...`, `chore/...`.
-2. Ship changes together with tests. A new endpoint without a test is not merged.
+2. Ship changes together with tests. A new endpoint without a test is not merged. After any schema/endpoint change run `make types` and commit the result.
 3. `/check` is green locally, then open a PR. CI runs the same checks.
 4. Merging into `main` auto-deploys backend to Cloud Run and frontend to Firebase Hosting. Do not merge anything that is not production-ready; use a feature flag or a separate branch for half-done work.
 

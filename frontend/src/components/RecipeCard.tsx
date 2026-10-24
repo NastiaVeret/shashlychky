@@ -1,7 +1,7 @@
 import type { Ingredient, RecipeRead } from '../api/recipes';
 
 function formatQuantity(i: Ingredient): string {
-  if (i.quantity === null) return i.unit;
+  if (i.quantity == null) return i.unit;
   const q = Number.isInteger(i.quantity) ? i.quantity : i.quantity.toFixed(1).replace(/\.0$/, '');
   return `${q} ${i.unit}`;
 }

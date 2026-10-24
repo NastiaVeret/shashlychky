@@ -1,6 +1,8 @@
 // Base HTTP client. BASE_URL is empty by default: in dev Vite proxies /api to the backend,
 // in production Firebase Hosting rewrites /api/** to the Cloud Run service (same origin).
 // VITE_API_URL exists only for pointing a local build at a remote backend.
+import type { components } from './schema';
+
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 export class ApiError extends Error {
@@ -37,9 +39,6 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   return res.json() as Promise<T>;
 }
 
-export interface HealthResponse {
-  status: string;
-  version: string;
-}
+export type HealthResponse = components['schemas']['HealthResponse'];
 
 export const getHealth = () => apiFetch<HealthResponse>('/api/v1/health');

@@ -9,7 +9,7 @@
 
 ## Impact
 
-- [ ] Changes the API contract (Pydantic ↔ TS types updated together)
+- [ ] Changes the API contract (`make types` run, `schema.d.ts` committed)
 - [ ] Needs new Cloud Run environment variables: <!-- which -->
 - [ ] Touches Dockerfile / CI / deployment
 - [ ] None of the above

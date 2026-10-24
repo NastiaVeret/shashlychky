@@ -144,8 +144,9 @@ Postgres and runs `alembic check` so a model change without a migration fails th
 React 19, TypeScript, Vite 8, `react-router-dom`, `@tanstack/react-query`, Tailwind CSS v4 via the Vite plugin.
 
 **Data flow.** Components never call `fetch`. `src/api/client.ts` wraps `fetch`, prefixes the relative `/api` path and
-turns FastAPI's `{"detail": ...}` into an `ApiError` message. `src/api/recipes.ts` holds TypeScript interfaces that
-mirror the backend Pydantic models and the request functions. `src/hooks/useRecipes.ts` exposes `useCreateRecipe`
+turns FastAPI's `{"detail": ...}` into an `ApiError` message. `src/api/schema.d.ts` is generated from the backend
+OpenAPI document by `make types` (openapi-typescript); `src/api/recipes.ts` aliases those types and holds the request
+functions. The `contract` CI job fails when the generated file is stale, so the API contract cannot drift silently. `src/hooks/useRecipes.ts` exposes `useCreateRecipe`
 (mutation; seeds the detail cache on success) and `useRecipe(id)` (query with `AbortSignal`, `staleTime: Infinity`).
 
 **UI.** `HomePage`: hero, chip-style `ProductInput` (Enter or comma adds, Backspace removes, suggestion chips,
@@ -178,7 +179,7 @@ errors `role="alert"`.
 **GitHub Actions.**
 
 - `ci.yml` on every PR and push to `main`: backend lint/typecheck/migrations/`alembic check`/tests against a Postgres
-  service container; frontend lint/format/build.
+  service container; frontend lint/format/build; `contract` job regenerating the TS types and diffing them.
 - `deploy.yml` on push to `main`: build and push the backend image → deploy and execute the migration job → deploy
   the Cloud Run service → build the frontend and deploy to Firebase Hosting (after the backend, because Firebase
   validates the rewrite target). Configuration comes from repository variables (`GCP_PROJECT_ID`, `GCP_REGION`,
@@ -202,6 +203,8 @@ Everything a teammate's Claude Code needs lives in the repo:
 - `.claude/settings.json`: allowlist for safe commands, deny-list for `.env` and keys, and a `PostToolUse` hook that
   runs `ruff` / `prettier` on every file Claude edits.
 - `.github/pull_request_template.md`: checklist incl. API-contract and migration impact.
+- `Makefile`: one entry point (`make install|dev|check|migration|types|seed`); `.pre-commit-config.yaml`: local hooks
+  for every developer; `.github/dependabot.yml`: weekly grouped dependency PRs.
 
 ## 9. Decisions worth knowing (short ADRs)
 
@@ -216,6 +219,8 @@ Everything a teammate's Claude Code needs lives in the repo:
 | Gemini Developer API with API key | free tier, simplest for a student project; key stays server-side | Vertex AI with the runtime service account (no key; revisit if quotas or data-residency matter) |
 | `gemini-3.1-flash-lite` + fallback | cheapest open model; fallback absorbs its intermittent 503/504 | single model with same-model retries (slower recovery) |
 | Tailwind v4, CSS-first config | tokens from the Canva design in one place, no CSS files to review | CSS modules |
+| Generated TS types from OpenAPI | backend schemas are the only source of truth; CI catches drift | hand-mirrored interfaces (first version) |
+| `openapi-typescript` via pinned `npx`, not in package.json | it peers on TypeScript 5 while the app is on 6; it is a codegen tool, not a runtime dependency | `legacy-peer-deps` for the whole project |
 
 ## 10. Known limitations and next steps
 

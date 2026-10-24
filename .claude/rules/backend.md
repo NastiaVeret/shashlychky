@@ -24,7 +24,7 @@ tests/                  mirrors app/: tests/api/v1/test_orders.py
 
 - All handlers are `async def`. No blocking calls (files, sync drivers) inside handlers.
 - Dependencies via `Annotated[..., Depends(...)]`, never as default argument values (ruff B008).
-- Responses are always typed: `response_model=` plus a Pydantic return annotation. Never return bare `dict`.
+- Responses are always typed: `response_model=` plus a Pydantic return annotation. Never return bare `dict`. Schemas feed the generated frontend types: after changing one run `make types` and commit `frontend/src/api/schema.d.ts`.
 - Errors: `HTTPException` with an explicit `status_code` and a clear `detail` message.
 - Configuration only through `Settings`. No `os.environ` outside `config.py`.
 - Database access via `db: DbSession` (`app/db/session.py`) and SQLAlchemy 2 async API. Schema changes always come with an Alembic migration (`/migration`).

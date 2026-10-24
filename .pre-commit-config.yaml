@@ -1,0 +1,61 @@
+# Runs on `git commit` for every developer (install once with `make install` or `uvx pre-commit install`).
+# Fast checks only; CI runs the full suite. Hooks are pinned; Dependabot does not update them, bump manually.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: check-yaml
+        exclude: ^frontend/
+      - id: detect-private-key
+      - id: end-of-file-fixer
+        exclude: \.(svg|json)$
+      - id: trailing-whitespace
+        exclude: \.md$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.2
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.9.5
+    hooks:
+      - id: uv-lock
+        files: ^backend/pyproject\.toml$
+        args: ["--project", "backend"]
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (backend)
+        entry: bash -c 'cd backend && uv run mypy app scripts'
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+      - id: prettier
+        name: prettier (frontend)
+        entry: scripts/prettier-frontend.sh
+        language: script
+        files: ^frontend/.*\.(ts|tsx|css|json|html)$
+        exclude: ^frontend/(package-lock\.json|src/api/schema\.d\.ts|src/api/openapi\.json)$
+
+      - id: oxlint
+        name: oxlint (frontend)
+        entry: bash -c 'cd frontend && npx oxlint'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      - id: conventional-commit
+        name: commit message follows Conventional Commits
+        entry: scripts/check-commit-msg.sh
+        language: script
+        stages: [commit-msg]

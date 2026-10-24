@@ -21,10 +21,10 @@ Before writing anything, read `backend/app/api/v1/health.py` and `backend/tests/
 3. **Registration.** Add `router.include_router(<resource>.router)` to `backend/app/api/v1/__init__.py`.
 4. **Tests.** `backend/tests/api/v1/test_<resource>.py` (create folders and `__init__.py`). At minimum: a happy path per method
    and one negative case (422 on invalid data or 404 on a missing id). Use the `client` fixture, plus `db_required` for tests that hit the database.
-5. **Frontend contract.** `frontend/src/api/<resource>.ts`: TS interfaces named after the Pydantic models,
-   and request functions using `apiFetch` from `./client`. Do not create components unless asked.
-6. **Verify.** From `backend/`: `uv run ruff format . && uv run ruff check . && uv run mypy app && uv run pytest -q`,
-   and from `frontend/`: `npm run build`. Fix whatever fails.
+5. **Frontend contract.** Run `make types` (regenerates `frontend/src/api/schema.d.ts` from OpenAPI). Then
+   `frontend/src/api/<resource>.ts`: type aliases into `components['schemas'][...]` and request functions using
+   `apiFetch` from `./client`. Never hand-write the shapes. Do not create components unless asked.
+6. **Verify.** `make check` from the repo root (backend, frontend and the generated-types drift check). Fix whatever fails.
 
 ## Report
 

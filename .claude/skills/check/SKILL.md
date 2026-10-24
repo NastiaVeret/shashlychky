@@ -6,7 +6,13 @@ allowed-tools: Bash(cd *), Bash(uv run *), Bash(npm run *)
 
 # Full project check
 
-Run both blocks. Do not stop at the first failure: collect all failures, then report.
+Prefer the single entry point from the repo root; it runs backend, frontend and the API-contract check:
+
+```bash
+make check
+```
+
+If `make` is unavailable or you need to isolate a part, run the blocks below. Do not stop at the first failure: collect all failures, then report.
 
 ## Backend
 

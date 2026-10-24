@@ -23,6 +23,17 @@ instructions), provider-enforced JSON schema + Pydantic validation, one correcti
 12 s per-attempt deadline with one fallback to `gemini-3.5-flash-lite` when the primary is slow or overloaded, thinking disabled, bounded output tokens, token usage and latency
 logged and stored per recipe, graceful 503/502 for the UI.
 
+## Quick start
+
+```bash
+make install      # uv sync, npm install, .env files, pre-commit hooks
+make dev          # Postgres (docker) + API on :8000 + Vite on :5173
+make check        # everything CI runs
+make help         # all targets
+```
+
+If port 5432 is taken on your machine: `DB_PORT=5434 make dev` (the variable reaches docker compose and the backend).
+
 ## Local development
 
 Backend (http://localhost:8000, Swagger at /docs):
@@ -53,10 +64,8 @@ PostgreSQL on Cloud SQL in production (`shashlychky:europe-central2:shashlychky`
 ORM: SQLAlchemy 2 (async, psycopg driver). Migrations: Alembic, rules in `.claude/rules/database.md`, workflow in the `/migration` skill.
 
 ```bash
-cd backend
-uv run alembic revision --autogenerate -m "add_orders_table"   # after changing models
-uv run alembic upgrade head
-uv run alembic check                                           # CI fails if models and migrations drift
+make migration m="add_orders_table"   # after changing models: autogenerate, lint, apply, alembic check
+make migrate                          # apply pending migrations
 ```
 
 To reach the production database from a laptop use the Cloud SQL Auth Proxy (needs `roles/cloudsql.client`):
@@ -67,13 +76,27 @@ cloud-sql-proxy shashlychky:europe-central2:shashlychky --port 5433
 # then DB_PORT=5433 DB_PASSWORD=$(gcloud secrets versions access latest --secret db-password) uv run alembic current
 ```
 
+## API contract: generated TypeScript types
+
+Backend Pydantic schemas are the single source of truth. `make types` exports the OpenAPI document
+(`frontend/src/api/openapi.json`) and generates `frontend/src/api/schema.d.ts` with
+[openapi-typescript](https://openapi-ts.dev). Frontend code aliases types from it
+(`components['schemas']['RecipeRead']`) and never hand-writes API shapes. The `contract` CI job regenerates the
+types and fails if the committed files are stale, so a backend change that forgets `make types` cannot merge.
+
+## Pre-commit hooks and dependency updates
+
+`make install` installs [pre-commit](https://pre-commit.com) hooks (`.pre-commit-config.yaml`): ruff, mypy,
+prettier, oxlint, `uv lock` consistency, secret/large-file guards and a Conventional Commits message check.
+Dependabot (`.github/dependabot.yml`) opens weekly grouped PRs for uv, npm and GitHub Actions.
+
 ## Checks
 
 ```bash
-# backend
-cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest
-# frontend
-cd frontend && npm run lint && npm run format:check && npm run build
+make check          # or individually:
+make check-backend  # ruff, mypy, pytest
+make check-frontend # oxlint, prettier, tsc + vite build
+make types-check    # generated types match the backend schema
 ```
 
 ## Deployment
@@ -86,7 +109,7 @@ cd frontend && npm run lint && npm run format:check && npm run build
 
 Workflows:
 
-- `.github/workflows/ci.yml`: lint, typecheck, tests, build on every PR and push to `main`.
+- `.github/workflows/ci.yml`: lint, typecheck, tests, build and the generated-types drift check on every PR and push to `main`.
 - `.github/workflows/deploy.yml`: on push to `main`: build backend image → run migrations job → deploy backend → deploy frontend (Firebase validates the Cloud Run rewrite target, so order matters).
 - `.github/workflows/preview.yml`: on every PR that touches `frontend/`, deploys a 7-day Firebase preview channel and comments the URL on the PR.
 

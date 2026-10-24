@@ -14,7 +14,7 @@ describe it and stop.
 Take the exact contract from the OpenAPI schema instead of guessing from source:
 
 ```bash
-cd backend && uv run python -c "from app.main import app; import json; print(json.dumps(app.openapi(), indent=1))"
+make types && cat frontend/src/api/openapi.json
 ```
 
 Then read the relevant router in `backend/app/api/v1/` and its Pydantic models for naming and docstrings.
@@ -30,8 +30,9 @@ Also check `frontend/src/pages/` and `frontend/src/App.tsx` if a page or route i
 
 Follow `.claude/rules/frontend.md`. Specifically:
 
-- **Types** in `frontend/src/api/<resource>.ts`: one `interface` per Pydantic model, same name, same fields.
-  Pydantic `str | None` → `string | null`; `datetime` → `string` (ISO); `list[X]` → `X[]`; `Literal[...]` / enum → union of string literals.
+- **Types**: run `make types` from the repo root; it regenerates `frontend/src/api/schema.d.ts` from the OpenAPI schema.
+  In `frontend/src/api/<resource>.ts` alias what you need: `export type Order = components['schemas']['OrderRead']`.
+  Never hand-write shapes; if something is missing, the backend schema is wrong or `make types` was not run.
 - **Request functions** in the same file via `apiFetch` from `./client`: `getOrders()`, `getOrder(id)`, `createOrder(body)`,
   `updateOrder(id, body)`, `deleteOrder(id)`. Path and method exactly as in OpenAPI, under `/api/v1`.
 - **Hooks** in `frontend/src/hooks/use<Resource>.ts`: `useQuery` wrappers with array keys (`['orders']`, `['orders', id]`)

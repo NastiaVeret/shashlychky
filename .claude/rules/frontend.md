@@ -11,7 +11,8 @@ paths:
 src/main.tsx            entry point
 src/App.tsx             providers (QueryClient, Router) and routes
 src/api/client.ts       apiFetch, ApiError, base URL
-src/api/<resource>.ts   request functions + TS response types (mirror of Pydantic models)
+src/api/schema.d.ts     GENERATED from the backend OpenAPI schema (`make types`); do not edit
+src/api/<resource>.ts   request functions; types are aliases into schema.d.ts (`components['schemas'][...]`)
 src/pages/              route pages, one page = one file <Name>Page.tsx
 src/components/         reusable components (create when needed)
 src/hooks/              custom hooks, incl. useQuery/useMutation wrappers
@@ -23,7 +24,7 @@ src/index.css           the only stylesheet: Tailwind import + @theme design tok
 - Function components only, named exports: `export function HomePage()`.
 - Backend data only via `@tanstack/react-query` and functions from `src/api/`. No `fetch`/`axios` in components.
 - Query keys are arrays, first element = resource: `['orders']`, `['orders', id]`.
-- API response types live in `src/api/` as `interface`s named after the backend Pydantic models.
+- API types are never hand-written: alias them from the generated `schema.d.ts` (`type RecipeRead = components['schemas']['RecipeRead']`). If a field is missing, the backend schema changes first, then `make types`.
 - `any` is forbidden. Unknown shape: `unknown` plus narrowing.
 - `erasableSyntaxOnly` is on: no `enum`, no constructor parameter properties, no `namespace`. Use an `as const` object or a union of literals instead of enum.
 - Styles: Tailwind CSS v4 utilities only (see the `tailwind` skill). Design tokens live in `src/index.css` `@theme`; no other CSS files, no inline styles, no CSS-in-JS. Run `npm run format` so classes are sorted.

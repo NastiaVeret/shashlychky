@@ -1,36 +1,10 @@
 import { apiFetch } from './client';
+import type { components } from './schema';
 
-// Mirrors backend/app/schemas/recipes.py
-
-export interface RecipeRequest {
-  products: string[];
-  preferences?: string | null;
-  servings?: number;
-}
-
-export interface Ingredient {
-  name: string;
-  quantity: number | null;
-  unit: string;
-  have_at_home: boolean;
-}
-
-export interface RecipeContent {
-  title: string;
-  description: string;
-  cooking_time_minutes: number;
-  servings: number;
-  ingredients: Ingredient[];
-  steps: string[];
-  tips: string | null;
-  clarifying_question: string | null;
-}
-
-export interface RecipeRead extends RecipeContent {
-  id: number;
-  products: string[];
-  created_at: string;
-}
+// Types come from the generated OpenAPI schema (`make types`); never hand-write API shapes here.
+export type RecipeRequest = components['schemas']['RecipeRequest'];
+export type Ingredient = components['schemas']['Ingredient'];
+export type RecipeRead = components['schemas']['RecipeRead'];
 
 export const recipeKeys = {
   all: ['recipes'] as const,

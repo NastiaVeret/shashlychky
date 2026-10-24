@@ -42,7 +42,7 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy app
+      - run: uv run mypy app scripts
       - name: Apply migrations to the test database
         run: uv run alembic upgrade head
       - name: Check migrations match the models (autogenerate must be a no-op)
@@ -67,3 +67,19 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run build
+
+  contract:
+    name: API contract (generated TS types are up to date)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd backend && uv sync --frozen --no-dev
+      - name: Regenerate types and compare with the committed ones
+        run: make types-check
