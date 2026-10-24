@@ -54,7 +54,7 @@ class GeminiLLM:
             http_options=types.HttpOptions(
                 timeout=int(settings.llm_timeout_seconds * 1000),
                 retry_options=types.HttpRetryOptions(
-                    attempts=3,
+                    attempts=2,  # one retry; a second one would push the user past 40 s
                     initial_delay=0.5,
                     max_delay=2.0,
                     http_status_codes=RETRYABLE_STATUS,
@@ -82,12 +82,15 @@ class GeminiLLM:
 
         for attempt in range(2):
             try:
-                async with asyncio.timeout(s.llm_timeout_seconds + 2):
+                # SDK may retry once, so the outer guard covers two attempts plus backoff.
+                async with asyncio.timeout(s.llm_timeout_seconds * 2 + 3):
                     response = await self._client.aio.models.generate_content(
                         model=s.gemini_model, contents=contents, config=config
                     )
             except (TimeoutError, genai_errors.ServerError) as exc:
-                logger.warning("llm unavailable model=%s error=%s", s.gemini_model, exc)
+                logger.warning(
+                    "llm unavailable model=%s error=%s: %s", s.gemini_model, type(exc).__name__, exc
+                )
                 raise LLMUnavailableError() from exc
             except genai_errors.ClientError as exc:
                 if exc.code in RETRYABLE_STATUS:

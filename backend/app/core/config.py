@@ -31,7 +31,8 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     # Cheapest Gemini model available to new API keys (2.5 Flash-Lite is closed to new users).
     gemini_model: str = "gemini-3.1-flash-lite"
-    llm_timeout_seconds: float = 10.0
+    # Per-attempt deadline. Flash-Lite usually answers in 2-5 s, but p99 under load exceeds 10 s.
+    llm_timeout_seconds: float = 20.0
     llm_max_output_tokens: int = 2048
     llm_temperature: float = 0.6
 

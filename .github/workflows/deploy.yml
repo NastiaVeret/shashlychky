@@ -89,7 +89,8 @@ jobs:
             GEMINI_API_KEY=gemini-api-key:latest
           env_vars: |
             ENVIRONMENT=production
-            CORS_ORIGINS=https://${{ env.PROJECT_ID }}.web.app,https://${{ env.PROJECT_ID }}.firebaseapp.com
+            # single origin: deploy-cloudrun splits env_vars on commas as well as newlines
+            CORS_ORIGINS=https://${{ env.PROJECT_ID }}.web.app
             DB_HOST=/cloudsql/${{ env.CLOUDSQL_INSTANCE }}
             DB_NAME=${{ env.DB_NAME }}
             DB_USER=${{ env.DB_USER }}
