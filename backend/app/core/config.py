@@ -29,7 +29,8 @@ class Settings(BaseSettings):
 
     # LLM (Gemini Developer API). The key lives only on the server: env var / Secret Manager.
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash-lite"  # cheapest Gemini model; override via env
+    # Cheapest Gemini model available to new API keys (2.5 Flash-Lite is closed to new users).
+    gemini_model: str = "gemini-3.1-flash-lite"
     llm_timeout_seconds: float = 10.0
     llm_max_output_tokens: int = 2048
     llm_temperature: float = 0.6

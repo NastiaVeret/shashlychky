@@ -43,7 +43,7 @@ After a backend API change, use the `frontend-integrator` agent to bring the fro
 - The frontend talks to the backend only through `frontend/src/api/` and `@tanstack/react-query`. No raw `fetch` in components.
 - API contract: a Pydantic model on the backend ↔ a TypeScript interface in `frontend/src/api/`. Change one, change the other.
 - The backend container listens on `$PORT` (Cloud Run). Never hardcode ports in the Dockerfile.
-- LLM: Gemini via `google-genai`, cheapest model by default (`GEMINI_MODEL=gemini-2.5-flash-lite`), structured output validated by Pydantic, key only on the server (`GEMINI_API_KEY` from Secret Manager). Provider code is isolated in `backend/app/services/llm.py` behind the `StructuredLLM` protocol; prompts live in the service that owns the feature.
+- LLM: Gemini via `google-genai`, cheapest model by default (`GEMINI_MODEL=gemini-3.1-flash-lite`), structured output validated by Pydantic, key only on the server (`GEMINI_API_KEY` from Secret Manager). Provider code is isolated in `backend/app/services/llm.py` behind the `StructuredLLM` protocol; prompts live in the service that owns the feature.
 - Frontend styling: Tailwind CSS v4 only, tokens in `src/index.css` (see the `tailwind` skill).
 - The frontend calls the API by relative path (`/api/v1/...`). `VITE_API_URL` stays empty in production; Vite proxies in dev, Firebase rewrites in prod.
 

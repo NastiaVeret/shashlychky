@@ -11,7 +11,7 @@ frontend/   React 19 + TypeScript + Vite
 
 ## What it does (v1)
 
-The user lists the products they have at home; the backend asks Gemini (`gemini-2.5-flash-lite`, the cheapest
+The user lists the products they have at home; the backend asks Gemini (`gemini-3.1-flash-lite`, the cheapest
 model) for one realistic dish as structured JSON (title, ingredients with quantities and "have at home / to buy"
 markers, steps, optional clarifying question), validates it, stores it in Postgres and the React UI renders the
 recipe card. Each recipe gets a shareable URL `/recipes/<id>`.
