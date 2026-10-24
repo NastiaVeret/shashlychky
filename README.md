@@ -9,6 +9,8 @@ frontend/   React 19 + TypeScript + Vite
 .claude/    shared Claude Code configuration (rules, skills, agents, hooks)
 ```
 
+Full engineering overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## What it does (v1)
 
 The user lists the products they have at home; the backend asks Gemini (`gemini-3.1-flash-lite`, the cheapest
