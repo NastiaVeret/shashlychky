@@ -109,6 +109,34 @@ export interface paths {
         get: operations["read_me_api_v1_me_get"];
         put?: never;
         post?: never;
+        /**
+         * Delete Me
+         * @description Delete the account with its profile and sessions. Cannot be undone.
+         */
+        delete: operations["delete_me_api_v1_me_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Profile
+         * @description Dietary profile and pantry; defaults for a user who never saved one.
+         */
+        get: operations["read_profile_api_v1_me_profile_get"];
+        /**
+         * Update Profile
+         * @description Replace the whole profile. Lists come back normalized (trimmed, de-duplicated).
+         */
+        put: operations["update_profile_api_v1_me_profile_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -266,6 +294,43 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * UserProfile
+         * @description Cooking context of a user. Stored as JSONB on `users.profile`; every field has a default,
+         *     so profiles saved by an older version of this schema still validate.
+         */
+        UserProfile: {
+            /**
+             * Allergies
+             * @default []
+             */
+            allergies: string[];
+            /**
+             * Diets
+             * @default []
+             */
+            diets: ("vegetarian" | "vegan" | "pescatarian" | "gluten_free" | "lactose_free" | "halal" | "fasting")[];
+            /**
+             * Disliked
+             * @default []
+             */
+            disliked: string[];
+            /**
+             * Equipment
+             * @default []
+             */
+            equipment: ("oven" | "stovetop" | "microwave" | "multicooker" | "air_fryer" | "blender")[];
+            /**
+             * Default Servings
+             * @default 2
+             */
+            default_servings: number;
+            /**
+             * Pantry
+             * @default []
+             */
+            pantry: string[];
         };
         /** UserRead */
         UserRead: {
@@ -457,6 +522,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_me_api_v1_me_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_profile_api_v1_me_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_profile_api_v1_me_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserProfile"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfile"];
                 };
             };
             /** @description Validation Error */

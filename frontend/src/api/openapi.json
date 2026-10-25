@@ -221,6 +221,155 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Delete Me",
+        "description": "Delete the account with its profile and sessions. Cannot be undone.",
+        "operationId": "delete_me_api_v1_me_delete",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/profile": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Read Profile",
+        "description": "Dietary profile and pantry; defaults for a user who never saved one.",
+        "operationId": "read_profile_api_v1_me_profile_get",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Update Profile",
+        "description": "Replace the whole profile. Lists come back normalized (trimmed, de-duplicated).",
+        "operationId": "update_profile_api_v1_me_profile_put",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserProfile"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/recipes": {
@@ -571,6 +720,82 @@
           "password"
         ],
         "title": "RegisterRequest"
+      },
+      "UserProfile": {
+        "properties": {
+          "allergies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Allergies",
+            "default": []
+          },
+          "diets": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "vegetarian",
+                "vegan",
+                "pescatarian",
+                "gluten_free",
+                "lactose_free",
+                "halal",
+                "fasting"
+              ]
+            },
+            "type": "array",
+            "maxItems": 7,
+            "title": "Diets",
+            "default": []
+          },
+          "disliked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Disliked",
+            "default": []
+          },
+          "equipment": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "oven",
+                "stovetop",
+                "microwave",
+                "multicooker",
+                "air_fryer",
+                "blender"
+              ]
+            },
+            "type": "array",
+            "maxItems": 6,
+            "title": "Equipment",
+            "default": []
+          },
+          "default_servings": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Default Servings",
+            "default": 2
+          },
+          "pantry": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Pantry",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "UserProfile",
+        "description": "Cooking context of a user. Stored as JSONB on `users.profile`; every field has a default,\nso profiles saved by an older version of this schema still validate."
       },
       "UserRead": {
         "properties": {

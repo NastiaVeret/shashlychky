@@ -83,6 +83,9 @@ socket. `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `LLM_TIMEOUT_
 | POST | `/api/v1/auth/login` | start a session → 200; 401 on bad credentials, 429 while locked |
 | POST | `/api/v1/auth/logout` | revoke the current session → 204 |
 | GET | `/api/v1/me` | the logged-in user, 401 without a session |
+| DELETE | `/api/v1/me` | delete the account with its profile and sessions → 204 |
+| GET | `/api/v1/me/profile` | dietary profile and pantry (defaults if never saved) |
+| PUT | `/api/v1/me/profile` | replace the profile; product lists are normalized like `RecipeRequest` |
 | POST | `/api/v1/recipes` | generate and store a recipe from products, servings, preferences → 201 |
 | GET | `/api/v1/recipes/{id}` | read a stored recipe |
 
@@ -242,8 +245,9 @@ Everything a teammate's Claude Code needs lives in the repo:
 
 ## 10. Known limitations and next steps
 
-- Accounts exist (email + password, see "Authentication" in section 3), but no profiles or dietary
-  restrictions yet. No password reset and no email confirmation: both need an email provider.
+- Accounts and a dietary profile exist (email + password, see "Authentication" in section 3; profile is
+  `users.profile` JSONB validated by `UserProfile`), but the profile does not reach the recipe prompt
+  yet. No password reset and no email confirmation: both need an email provider.
 - No rate limiting on `POST /recipes`; the only guard is input size. Add per-IP limits before public promotion.
 - No eval set for recipe quality; the deck plans 50–100 reference recipes in CI.
 - Cold starts: `min-instances=0` saves money but adds a few seconds to the first request after idle.
