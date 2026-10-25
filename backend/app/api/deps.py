@@ -18,8 +18,15 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 SessionToken = Annotated[str | None, Cookie(alias=SESSION_COOKIE)]
 
 
-async def get_current_user(db: DbSession, token: SessionToken = None) -> User:
-    user = await auth_service.get_user_by_token(db, token) if token else None
+async def get_optional_user(db: DbSession, token: SessionToken = None) -> User | None:
+    """The logged-in user, or None for anonymous requests (and expired or forged sessions)."""
+    return await auth_service.get_user_by_token(db, token) if token else None
+
+
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+
+
+async def get_current_user(user: OptionalUser) -> User:
     if user is None:
         raise NotAuthenticatedError()
     return user

@@ -119,6 +119,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Recipes
+         * @description The user's recipes, newest first.
+         */
+        get: operations["list_my_recipes_api_v1_me_recipes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/profile": {
         parameters: {
             query?: never;
@@ -154,7 +174,7 @@ export interface paths {
         put?: never;
         /**
          * Create Recipe
-         * @description Generate a recipe from the user's products and store it.
+         * @description Generate a recipe and store it; a logged-in user gets their profile and history applied.
          */
         post: operations["create_recipe_api_v1_recipes_post"];
         delete?: never;
@@ -564,6 +584,40 @@ export interface operations {
             };
         };
     };
+    list_my_recipes_api_v1_me_recipes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_profile_api_v1_me_profile_get: {
         parameters: {
             query?: never;
@@ -635,7 +689,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                __session?: string | null;
+            };
         };
         requestBody: {
             content: {

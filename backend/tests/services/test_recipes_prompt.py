@@ -1,5 +1,8 @@
+from typing import get_args
+
+from app.schemas.profiles import Diet, Equipment, UserProfile
 from app.schemas.recipes import RecipeRequest
-from app.services.recipes import SYSTEM_PROMPT, build_user_prompt
+from app.services.recipes import DIET_LABELS, EQUIPMENT_LABELS, SYSTEM_PROMPT, build_user_prompt
 
 
 def test_user_prompt_lists_products_servings_and_preferences() -> None:
@@ -22,3 +25,33 @@ def test_system_prompt_treats_products_as_data() -> None:
 def test_request_caps_product_length_and_dedupes() -> None:
     req = RecipeRequest(products=["a" * 100, "A" * 100, "яйця", "Яйця"])
     assert req.products == ["a" * 40, "яйця"]
+
+
+def test_user_prompt_includes_profile_and_recent_titles() -> None:
+    profile = UserProfile(
+        allergies=["арахіс"],
+        diets=["vegan"],
+        disliked=["цибуля"],
+        equipment=["microwave"],
+        pantry=["рис"],
+    )
+
+    prompt = build_user_prompt(RecipeRequest(products=["Курка"]), profile, ["Плов"])
+
+    assert "Алергени (заборонено повністю): арахіс" in prompt
+    assert "веганське" in prompt
+    assert "Не їсть: цибуля" in prompt
+    assert "Кухонна техніка: мікрохвильовка" in prompt
+    assert "Базові запаси, завжди є вдома: рис" in prompt
+    assert "не повторюй:\n- Плов" in prompt
+
+
+def test_user_prompt_skips_empty_profile() -> None:
+    req = RecipeRequest(products=["Курка"])
+
+    assert build_user_prompt(req, UserProfile()) == build_user_prompt(req)
+
+
+def test_every_diet_and_equipment_has_a_label() -> None:
+    assert set(DIET_LABELS) == set(get_args(Diet))
+    assert set(EQUIPMENT_LABELS) == set(get_args(Equipment))

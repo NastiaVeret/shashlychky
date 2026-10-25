@@ -41,6 +41,13 @@ class TooManyLoginAttemptsError(AppError):
     detail = "Забагато невдалих спроб входу. Спробуйте пізніше."
 
 
+class AllergenInProductsError(AppError):
+    """The user listed a product that is one of their own allergens."""
+
+    status_code = 422
+    detail = "Серед продуктів є ваш алерген. Приберіть його або оновіть профіль."
+
+
 class LLMUnavailableError(AppError):
     """The model provider timed out, rate-limited us or returned a server error."""
 
@@ -53,3 +60,9 @@ class LLMInvalidResponseError(AppError):
 
     status_code = 502
     detail = "Не вдалося отримати коректний рецепт від моделі. Спробуйте ще раз."
+
+
+class AllergenInRecipeError(LLMInvalidResponseError):
+    """The model kept putting one of the user's allergens into the recipe, even after a retry."""
+
+    detail = "Не вдалося підібрати рецепт без ваших алергенів. Спробуйте інші продукти."
