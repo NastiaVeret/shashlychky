@@ -25,6 +25,13 @@ class LLMUnavailableError(AppError):
     detail = "Сервіс генерації тимчасово недоступний. Спробуйте ще раз за хвилину."
 
 
+class NutritionUnavailableError(AppError):
+    """The product catalogue (Silpo) is not configured or did not answer."""
+
+    status_code = 503
+    detail = "Дані про КБЖВ з Сільпо тимчасово недоступні. Спробуйте пізніше."
+
+
 class LLMInvalidResponseError(AppError):
     """The model answered, but not in the expected structure even after a retry."""
 

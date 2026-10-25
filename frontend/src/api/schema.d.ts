@@ -75,6 +75,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/recipes/{recipe_id}/nutrition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Recipe Nutrition
+         * @description Calories and macros of a stored recipe from Silpo product data, optionally vs a goal.
+         */
+        get: operations["read_recipe_nutrition_api_v1_recipes__recipe_id__nutrition_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -85,6 +105,16 @@ export interface components {
             status: string;
             /** Database */
             database: string;
+        };
+        /** GoalComparison */
+        GoalComparison: {
+            /** Daily Kcal */
+            daily_kcal: number;
+            /**
+             * Per Serving Percent
+             * @description Яку частку денної норми покриває одна порція
+             */
+            per_serving_percent: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -120,6 +150,58 @@ export interface components {
              * @description true, якщо інгредієнт є серед продуктів користувача або базовий (сіль, вода, олія)
              */
             have_at_home: boolean;
+        };
+        /** IngredientNutrition */
+        IngredientNutrition: {
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "counted" | "to_taste" | "no_product" | "no_data" | "unknown_unit";
+            /**
+             * Grams
+             * @description Вага інгредієнта в рецепті, якщо її вдалося визначити
+             */
+            grams: number | null;
+            /**
+             * Product Name
+             * @description Товар Сільпо, з якого взято КБЖВ
+             */
+            product_name: string | null;
+            per_100g: components["schemas"]["NutritionFacts"] | null;
+            total: components["schemas"]["NutritionFacts"] | null;
+        };
+        /** NutritionFacts */
+        NutritionFacts: {
+            /** Kcal */
+            kcal: number;
+            /** Protein G */
+            protein_g: number;
+            /** Fat G */
+            fat_g: number;
+            /** Carbs G */
+            carbs_g: number;
+        };
+        /** RecipeNutrition */
+        RecipeNutrition: {
+            /** Recipe Id */
+            recipe_id: number;
+            /** Servings */
+            servings: number;
+            total: components["schemas"]["NutritionFacts"];
+            per_serving: components["schemas"]["NutritionFacts"];
+            /** Counted Ingredients */
+            counted_ingredients: number;
+            /**
+             * Countable Ingredients
+             * @description Інгредієнти з кількістю (без 'за смаком')
+             */
+            countable_ingredients: number;
+            /** Ingredients */
+            ingredients: components["schemas"]["IngredientNutrition"][];
+            goal: components["schemas"]["GoalComparison"] | null;
         };
         /** RecipeRead */
         RecipeRead: {
@@ -289,6 +371,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecipeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_recipe_nutrition_api_v1_recipes__recipe_id__nutrition_get: {
+        parameters: {
+            query?: {
+                daily_kcal_goal?: number | null;
+            };
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeNutrition"];
                 };
             };
             /** @description Validation Error */

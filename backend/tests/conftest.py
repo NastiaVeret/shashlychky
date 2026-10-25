@@ -8,8 +8,10 @@ from sqlalchemy import text
 from app.core.errors import LLMUnavailableError
 from app.db.session import get_engine
 from app.main import app
+from app.schemas.nutrition import NutritionFacts
 from app.schemas.recipes import Ingredient, RecipeContent
 from app.services.llm import LLMResult, get_llm
+from app.services.nutrition import ProductNutrition, get_nutrition_provider
 
 SAMPLE_RECIPE = RecipeContent(
     title="Омлет з помідорами",
@@ -42,6 +44,36 @@ class FakeLLM:
             raise self.fail
         data = schema.model_validate(SAMPLE_RECIPE.model_dump())
         return LLMResult(data=data, model="fake", prompt_tokens=10, output_tokens=20, latency_ms=5)
+
+
+class FakeNutrition:
+    """Stand-in for the Silpo nutrition lookup: answers from a fixed name -> product map."""
+
+    def __init__(self, products: dict[str, ProductNutrition | None]) -> None:
+        self.products = products
+        self.calls: list[list[str]] = []
+
+    async def lookup(self, names: list[str]) -> dict[str, ProductNutrition | None]:
+        self.calls.append(names)
+        return {n: self.products.get(n) for n in names}
+
+
+# 1 piece of tomato sold as "150г"; eggs not found in the catalogue
+SAMPLE_NUTRITION = {
+    "Помідор": ProductNutrition(
+        product_name="Помідор рожевий",
+        per_100g=NutritionFacts(kcal=20, protein_g=1, fat_g=0.2, carbs_g=4),
+        package_grams=150,
+    ),
+}
+
+
+@pytest.fixture
+def fake_nutrition() -> Iterator[FakeNutrition]:
+    provider = FakeNutrition(SAMPLE_NUTRITION)
+    app.dependency_overrides[get_nutrition_provider] = lambda: provider
+    yield provider
+    app.dependency_overrides.pop(get_nutrition_provider, None)
 
 
 @pytest.fixture
