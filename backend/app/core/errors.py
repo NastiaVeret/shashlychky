@@ -18,6 +18,29 @@ class NotFoundError(AppError):
     detail = "Не знайдено"
 
 
+class ConflictError(AppError):
+    status_code = 409
+    detail = "Конфлікт даних"
+
+
+class NotAuthenticatedError(AppError):
+    """No session cookie, or the session expired or was revoked."""
+
+    status_code = 401
+    detail = "Потрібно увійти"
+
+
+class InvalidCredentialsError(NotAuthenticatedError):
+    """Wrong email or password. One message for both, so emails cannot be probed via login."""
+
+    detail = "Невірний email або пароль"
+
+
+class TooManyLoginAttemptsError(AppError):
+    status_code = 429
+    detail = "Забагато невдалих спроб входу. Спробуйте пізніше."
+
+
 class LLMUnavailableError(AppError):
     """The model provider timed out, rate-limited us or returned a server error."""
 
