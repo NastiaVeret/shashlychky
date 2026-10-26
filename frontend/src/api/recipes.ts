@@ -8,6 +8,7 @@ export type RecipeRead = components['schemas']['RecipeRead'];
 
 export const recipeKeys = {
   all: ['recipes'] as const,
+  mine: ['recipes', 'mine'] as const,
   detail: (id: number) => ['recipes', id] as const,
 };
 
@@ -16,3 +17,12 @@ export const createRecipe = (body: RecipeRequest) =>
 
 export const getRecipe = (id: number, signal?: AbortSignal) =>
   apiFetch<RecipeRead>(`/api/v1/recipes/${id}`, { signal });
+
+/** The logged-in user's recipes, newest first. `limit` is 1..50 on the backend. */
+export const getMyRecipes = (
+  { limit, offset }: { limit: number; offset: number },
+  signal?: AbortSignal,
+) => {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return apiFetch<RecipeRead[]>(`/api/v1/me/recipes?${params}`, { signal });
+};

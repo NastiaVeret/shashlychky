@@ -7,6 +7,7 @@ import { HomePage } from './pages/HomePage';
 const RecipePage = lazy(() =>
   import('./pages/RecipePage').then((m) => ({ default: m.RecipePage })),
 );
+const AuthPage = lazy(() => import('./pages/AuthPage').then((m) => ({ default: m.AuthPage })));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -21,6 +22,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/recipes/:id" element={<RecipePage />} />
+              <Route path="/login" element={<AuthPage />} />
             </Routes>
           </Suspense>
         </Layout>

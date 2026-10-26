@@ -36,6 +36,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (!res.ok) {
     throw new ApiError(res.status, await errorMessage(res));
   }
+  // 204 No Content (logout, account deletion) has no body to parse; call these as apiFetch<void>.
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
