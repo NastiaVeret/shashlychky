@@ -16,6 +16,7 @@ async def test_create_recipe_returns_201_and_stored_recipe(
     assert body["products"] == ["яйця", "помідор"]  # trimmed and de-duplicated
     assert len(body["ingredients"]) == 3
     assert body["ingredients"][0]["have_at_home"] is True
+    assert body["ingredients"][0]["unit"] == "шт"
     assert body["id"] > 0
     # the prompt carries the products and the servings, and the system prompt is separate
     assert "- яйця" in fake_llm.calls[0]["user"]

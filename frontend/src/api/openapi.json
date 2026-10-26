@@ -187,13 +187,17 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
             "title": "Name",
-            "description": "Назва інгредієнта українською"
+            "description": "Назва інгредієнта українською, без кількості"
           },
           "quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "maximum": 100000.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -203,9 +207,8 @@
             "description": "Кількість; null, якщо 'за смаком'"
           },
           "unit": {
-            "type": "string",
-            "title": "Unit",
-            "description": "Одиниця: г, мл, шт, ст. л., ч. л. або 'за смаком'"
+            "$ref": "#/components/schemas/Unit",
+            "description": "Одиниця виміру, строго одна з: г, мл, шт, ст. л., ч. л., за смаком"
           },
           "have_at_home": {
             "type": "boolean",
@@ -225,11 +228,15 @@
         "properties": {
           "title": {
             "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
             "title": "Title",
             "description": "Назва страви"
           },
           "description": {
             "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
             "title": "Description",
             "description": "1-2 речення про страву"
           },
@@ -250,6 +257,7 @@
               "$ref": "#/components/schemas/Ingredient"
             },
             "type": "array",
+            "maxItems": 25,
             "minItems": 1,
             "title": "Ingredients"
           },
@@ -258,26 +266,29 @@
               "type": "string"
             },
             "type": "array",
+            "maxItems": 20,
             "minItems": 1,
             "title": "Steps",
-            "description": "Кроки приготування по порядку"
+            "description": "Кроки приготування по порядку, одна дія на крок, без нумерації"
           },
           "tips": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 300
               },
               {
                 "type": "null"
               }
             ],
             "title": "Tips",
-            "description": "Коротка порада або варіант заміни"
+            "description": "Порада або варіант заміни"
           },
           "clarifying_question": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 200
               },
               {
                 "type": "null"
@@ -353,6 +364,19 @@
           "products"
         ],
         "title": "RecipeRequest"
+      },
+      "Unit": {
+        "type": "string",
+        "enum": [
+          "г",
+          "мл",
+          "шт",
+          "ст. л.",
+          "ч. л.",
+          "за смаком"
+        ],
+        "title": "Unit",
+        "description": "Normalized measurement units. The model may not invent any others."
       },
       "ValidationError": {
         "properties": {

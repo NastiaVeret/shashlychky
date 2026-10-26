@@ -102,7 +102,7 @@ export interface components {
         Ingredient: {
             /**
              * Name
-             * @description Назва інгредієнта українською
+             * @description Назва інгредієнта українською, без кількості
              */
             name: string;
             /**
@@ -110,11 +110,8 @@ export interface components {
              * @description Кількість; null, якщо 'за смаком'
              */
             quantity?: number | null;
-            /**
-             * Unit
-             * @description Одиниця: г, мл, шт, ст. л., ч. л. або 'за смаком'
-             */
-            unit: string;
+            /** @description Одиниця виміру, строго одна з: г, мл, шт, ст. л., ч. л., за смаком */
+            unit: components["schemas"]["Unit"];
             /**
              * Have At Home
              * @description true, якщо інгредієнт є серед продуктів користувача або базовий (сіль, вода, олія)
@@ -141,12 +138,12 @@ export interface components {
             ingredients: components["schemas"]["Ingredient"][];
             /**
              * Steps
-             * @description Кроки приготування по порядку
+             * @description Кроки приготування по порядку, одна дія на крок, без нумерації
              */
             steps: string[];
             /**
              * Tips
-             * @description Коротка порада або варіант заміни
+             * @description Порада або варіант заміни
              */
             tips?: string | null;
             /**
@@ -176,6 +173,12 @@ export interface components {
              */
             servings: number;
         };
+        /**
+         * Unit
+         * @description Normalized measurement units. The model may not invent any others.
+         * @enum {string}
+         */
+        Unit: "г" | "мл" | "шт" | "ст. л." | "ч. л." | "за смаком";
         /** ValidationError */
         ValidationError: {
             /** Location */
