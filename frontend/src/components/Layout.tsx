@@ -23,6 +23,12 @@ function AccountNav() {
 
   return (
     <nav aria-label="Акаунт" className="flex flex-wrap items-center gap-1">
+      <NavLink to="/my-recipes" className={NAV_ITEM}>
+        Мої рецепти
+      </NavLink>
+      <NavLink to="/profile" className={NAV_ITEM}>
+        Профіль
+      </NavLink>
       <button
         type="button"
         onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/') })}

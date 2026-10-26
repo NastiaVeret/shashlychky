@@ -5,12 +5,26 @@ interface Props {
   onChange: (products: string[]) => void;
   max?: number;
   disabled?: boolean;
+  /** Defaults fit the recipe form; the profile page reuses the input for its product lists. */
+  id?: string;
+  label?: string;
+  placeholder?: string;
+  suggestions?: readonly string[];
 }
 
 const SUGGESTIONS = ['яйця', 'картопля', 'курка', 'помідори', 'сир', 'рис', 'цибуля', 'гриби'];
 
 /** Chip input: type a product, press Enter or comma to add it. */
-export function ProductInput({ products, onChange, max = 30, disabled }: Props) {
+export function ProductInput({
+  products,
+  onChange,
+  max = 30,
+  disabled,
+  id = 'product-input',
+  label = 'Що є вдома?',
+  placeholder = 'Наприклад: яйця, картопля, цибуля',
+  suggestions = SUGGESTIONS,
+}: Props) {
   const [draft, setDraft] = useState('');
 
   const add = (raw: string) => {
@@ -32,18 +46,18 @@ export function ProductInput({ products, onChange, max = 30, disabled }: Props) 
     }
   };
 
-  const unusedSuggestions = SUGGESTIONS.filter(
-    (s) => !products.some((p) => p.toLocaleLowerCase('uk') === s),
-  ).slice(0, 6);
+  const unusedSuggestions = suggestions
+    .filter((s) => !products.some((p) => p.toLocaleLowerCase('uk') === s))
+    .slice(0, 6);
 
   return (
     <div>
-      <label htmlFor="product-input" className="mb-2 block text-sm font-semibold text-olive-800">
-        Що є вдома?
+      <label htmlFor={id} className="mb-2 block text-sm font-semibold text-olive-800">
+        {label}
       </label>
       <div
         className="rounded-card bg-cream-50 focus-within:border-accent-500 focus-within:ring-accent-500/20 flex min-h-14 flex-wrap items-center gap-2 border-2 border-olive-200 px-3 py-2 transition focus-within:ring-4"
-        onClick={() => document.getElementById('product-input')?.focus()}
+        onClick={() => document.getElementById(id)?.focus()}
       >
         {products.map((p) => (
           <span
@@ -66,13 +80,13 @@ export function ProductInput({ products, onChange, max = 30, disabled }: Props) 
           </span>
         ))}
         <input
-          id="product-input"
+          id={id}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           onBlur={() => add(draft)}
           disabled={disabled || products.length >= max}
-          placeholder={products.length === 0 ? 'Наприклад: яйця, картопля, цибуля' : 'Додати ще…'}
+          placeholder={products.length === 0 ? placeholder : 'Додати ще…'}
           autoComplete="off"
           className="min-w-40 flex-1 bg-transparent py-1 text-base outline-none placeholder:text-olive-600/60"
         />
