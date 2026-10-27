@@ -60,3 +60,44 @@ async def test_create_recipe_when_llm_down_returns_503(
     response = await client.post("/api/v1/recipes", json={"products": ["яйця"]})
     assert response.status_code == 503
     assert "тимчасово недоступний" in response.json()["detail"]
+
+
+async def test_read_legacy_recipe_row_returns_200(client: AsyncClient, db_required: None) -> None:
+    """A recipe saved before the strict unit schema must stay readable via its share link."""
+    from app.db.session import get_sessionmaker
+    from app.models.recipe import Recipe
+
+    legacy_content = {
+        "title": "Грінки з часником",
+        "description": "Хрусткий хліб. " * 25,
+        "cooking_time_minutes": 15,
+        "servings": 2,
+        "ingredients": [
+            {"name": "Часник", "quantity": 2, "unit": "зубчики", "have_at_home": True},
+            {"name": "Хліб", "quantity": 4, "unit": "скибочки", "have_at_home": True},
+        ],
+        "steps": ["Натерти хліб часником.", "Підсмажити."],
+        "tips": None,
+        "clarifying_question": None,
+    }
+    async with get_sessionmaker()() as db:
+        row = Recipe(
+            products=["хліб", "часник"],
+            preferences=None,
+            servings=2,
+            model="legacy-test",
+            content=legacy_content,
+            prompt_tokens=None,
+            output_tokens=None,
+            latency_ms=0,
+        )
+        db.add(row)
+        await db.commit()
+        await db.refresh(row)
+
+    response = await client.get(f"/api/v1/recipes/{row.id}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ingredients"][0]["unit"] == "зубчики"
+    assert body["ingredients"][1]["unit"] == "скибочки"

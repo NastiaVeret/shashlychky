@@ -47,23 +47,443 @@
         }
       }
     },
+    "/api/v1/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register",
+        "description": "Create an account and log in right away.",
+        "operationId": "register_api_v1_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "description": "Revoke the current session. Succeeds without a session too, so the UI can always call it.",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Read Me",
+        "description": "The logged-in user; 401 without a valid session.",
+        "operationId": "read_me_api_v1_me_get",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Delete Me",
+        "description": "Delete the account with its profile and sessions. Cannot be undone.",
+        "operationId": "delete_me_api_v1_me_delete",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/recipes": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "List My Recipes",
+        "description": "The user's recipes, newest first.",
+        "operationId": "list_my_recipes_api_v1_me_recipes_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecipeRead"
+                  },
+                  "title": "Response List My Recipes Api V1 Me Recipes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/profile": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Read Profile",
+        "description": "Dietary profile and pantry; defaults for a user who never saved one.",
+        "operationId": "read_profile_api_v1_me_profile_get",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Update Profile",
+        "description": "Replace the whole profile. Lists come back normalized (trimmed, de-duplicated).",
+        "operationId": "update_profile_api_v1_me_profile_put",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserProfile"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/recipes": {
       "post": {
         "tags": [
           "recipes"
         ],
         "summary": "Create Recipe",
-        "description": "Generate a recipe from the user's products and store it.",
+        "description": "Generate a recipe and store it; a logged-in user gets their profile and history applied.",
         "operationId": "create_recipe_api_v1_recipes_post",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RecipeRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -183,120 +603,64 @@
         ],
         "title": "HealthResponse"
       },
-      "Ingredient": {
+      "IngredientRead": {
         "properties": {
           "name": {
             "type": "string",
-            "maxLength": 60,
-            "minLength": 1,
-            "title": "Name",
-            "description": "Назва інгредієнта українською, без кількості"
+            "title": "Name"
           },
           "quantity": {
             "anyOf": [
               {
-                "type": "number",
-                "maximum": 100000.0,
-                "minimum": 0.0
+                "type": "number"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Quantity",
-            "description": "Кількість; null, якщо 'за смаком'"
+            "title": "Quantity"
           },
           "unit": {
-            "$ref": "#/components/schemas/Unit",
-            "description": "Одиниця виміру, строго одна з: г, мл, шт, ст. л., ч. л., за смаком"
+            "type": "string",
+            "title": "Unit"
           },
           "have_at_home": {
             "type": "boolean",
             "title": "Have At Home",
-            "description": "true, якщо інгредієнт є серед продуктів користувача або базовий (сіль, вода, олія)"
+            "default": true
           }
         },
         "type": "object",
         "required": [
           "name",
-          "unit",
-          "have_at_home"
+          "unit"
         ],
-        "title": "Ingredient"
+        "title": "IngredientRead",
+        "description": "An ingredient as stored. `unit` is free text here: rows written before the `Unit` enum\nexisted keep whatever the model said back then (\"зубчики\", \"пучок\") and must stay readable."
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest"
       },
       "RecipeRead": {
         "properties": {
-          "title": {
-            "type": "string",
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Title",
-            "description": "Назва страви"
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 300,
-            "minLength": 1,
-            "title": "Description",
-            "description": "1-2 речення про страву"
-          },
-          "cooking_time_minutes": {
-            "type": "integer",
-            "maximum": 600.0,
-            "minimum": 1.0,
-            "title": "Cooking Time Minutes"
-          },
-          "servings": {
-            "type": "integer",
-            "maximum": 12.0,
-            "minimum": 1.0,
-            "title": "Servings"
-          },
-          "ingredients": {
-            "items": {
-              "$ref": "#/components/schemas/Ingredient"
-            },
-            "type": "array",
-            "maxItems": 25,
-            "minItems": 1,
-            "title": "Ingredients"
-          },
-          "steps": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "minItems": 1,
-            "title": "Steps",
-            "description": "Кроки приготування по порядку, одна дія на крок, без нумерації"
-          },
-          "tips": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 300
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tips",
-            "description": "Порада або варіант заміни"
-          },
-          "clarifying_question": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 200
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Clarifying Question",
-            "description": "Якщо з наданих продуктів неможливо зібрати страву або продукт незрозумілий, постав тут одне уточнювальне питання; інакше null"
-          },
           "id": {
             "type": "integer",
             "title": "Id"
@@ -312,21 +676,74 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "cooking_time_minutes": {
+            "type": "integer",
+            "title": "Cooking Time Minutes"
+          },
+          "servings": {
+            "type": "integer",
+            "title": "Servings"
+          },
+          "ingredients": {
+            "items": {
+              "$ref": "#/components/schemas/IngredientRead"
+            },
+            "type": "array",
+            "title": "Ingredients"
+          },
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "tips": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tips"
+          },
+          "clarifying_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarifying Question"
           }
         },
         "type": "object",
         "required": [
+          "id",
+          "products",
+          "created_at",
           "title",
           "description",
           "cooking_time_minutes",
           "servings",
           "ingredients",
-          "steps",
-          "id",
-          "products",
-          "created_at"
+          "steps"
         ],
-        "title": "RecipeRead"
+        "title": "RecipeRead",
+        "description": "API response for a stored recipe. Deliberately lenient: the strict bounds in\n`RecipeContent` are the contract for *generation*; a recipe that was valid when it was\nsaved must never turn into a 500 because the contract got stricter later."
       },
       "RecipeRequest": {
         "properties": {
@@ -365,18 +782,127 @@
         ],
         "title": "RecipeRequest"
       },
-      "Unit": {
-        "type": "string",
-        "enum": [
-          "г",
-          "мл",
-          "шт",
-          "ст. л.",
-          "ч. л.",
-          "за смаком"
+      "RegisterRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
         ],
-        "title": "Unit",
-        "description": "Normalized measurement units. The model may not invent any others."
+        "title": "RegisterRequest"
+      },
+      "UserProfile": {
+        "properties": {
+          "allergies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Allergies",
+            "default": []
+          },
+          "diets": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "vegetarian",
+                "vegan",
+                "pescatarian",
+                "gluten_free",
+                "lactose_free",
+                "halal",
+                "fasting"
+              ]
+            },
+            "type": "array",
+            "maxItems": 7,
+            "title": "Diets",
+            "default": []
+          },
+          "disliked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Disliked",
+            "default": []
+          },
+          "equipment": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "oven",
+                "stovetop",
+                "microwave",
+                "multicooker",
+                "air_fryer",
+                "blender"
+              ]
+            },
+            "type": "array",
+            "maxItems": 6,
+            "title": "Equipment",
+            "default": []
+          },
+          "default_servings": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Default Servings",
+            "default": 2
+          },
+          "pantry": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Pantry",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "UserProfile",
+        "description": "Cooking context of a user. Stored as JSONB on `users.profile`; every field has a default,\nso profiles saved by an older version of this schema still validate."
+      },
+      "UserRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "created_at"
+        ],
+        "title": "UserRead"
       },
       "ValidationError": {
         "properties": {

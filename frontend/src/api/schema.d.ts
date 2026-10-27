@@ -38,6 +38,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register
+         * @description Create an account and log in right away.
+         */
+        post: operations["register_api_v1_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout
+         * @description Revoke the current session. Succeeds without a session too, so the UI can always call it.
+         */
+        post: operations["logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Me
+         * @description The logged-in user; 401 without a valid session.
+         */
+        get: operations["read_me_api_v1_me_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Me
+         * @description Delete the account with its profile and sessions. Cannot be undone.
+         */
+        delete: operations["delete_me_api_v1_me_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Recipes
+         * @description The user's recipes, newest first.
+         */
+        get: operations["list_my_recipes_api_v1_me_recipes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Profile
+         * @description Dietary profile and pantry; defaults for a user who never saved one.
+         */
+        get: operations["read_profile_api_v1_me_profile_get"];
+        /**
+         * Update Profile
+         * @description Replace the whole profile. Lists come back normalized (trimmed, de-duplicated).
+         */
+        put: operations["update_profile_api_v1_me_profile_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recipes": {
         parameters: {
             query?: never;
@@ -49,7 +174,7 @@ export interface paths {
         put?: never;
         /**
          * Create Recipe
-         * @description Generate a recipe from the user's products and store it.
+         * @description Generate a recipe and store it; a logged-in user gets their profile and history applied.
          */
         post: operations["create_recipe_api_v1_recipes_post"];
         delete?: never;
@@ -98,59 +223,38 @@ export interface components {
             /** Version */
             version: string;
         };
-        /** Ingredient */
-        Ingredient: {
-            /**
-             * Name
-             * @description Назва інгредієнта українською, без кількості
-             */
+        /**
+         * IngredientRead
+         * @description An ingredient as stored. `unit` is free text here: rows written before the `Unit` enum
+         *     existed keep whatever the model said back then ("зубчики", "пучок") and must stay readable.
+         */
+        IngredientRead: {
+            /** Name */
             name: string;
-            /**
-             * Quantity
-             * @description Кількість; null, якщо 'за смаком'
-             */
+            /** Quantity */
             quantity?: number | null;
-            /** @description Одиниця виміру, строго одна з: г, мл, шт, ст. л., ч. л., за смаком */
-            unit: components["schemas"]["Unit"];
+            /** Unit */
+            unit: string;
             /**
              * Have At Home
-             * @description true, якщо інгредієнт є серед продуктів користувача або базовий (сіль, вода, олія)
+             * @default true
              */
             have_at_home: boolean;
         };
-        /** RecipeRead */
+        /** LoginRequest */
+        LoginRequest: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /**
+         * RecipeRead
+         * @description API response for a stored recipe. Deliberately lenient: the strict bounds in
+         *     `RecipeContent` are the contract for *generation*; a recipe that was valid when it was
+         *     saved must never turn into a 500 because the contract got stricter later.
+         */
         RecipeRead: {
-            /**
-             * Title
-             * @description Назва страви
-             */
-            title: string;
-            /**
-             * Description
-             * @description 1-2 речення про страву
-             */
-            description: string;
-            /** Cooking Time Minutes */
-            cooking_time_minutes: number;
-            /** Servings */
-            servings: number;
-            /** Ingredients */
-            ingredients: components["schemas"]["Ingredient"][];
-            /**
-             * Steps
-             * @description Кроки приготування по порядку, одна дія на крок, без нумерації
-             */
-            steps: string[];
-            /**
-             * Tips
-             * @description Порада або варіант заміни
-             */
-            tips?: string | null;
-            /**
-             * Clarifying Question
-             * @description Якщо з наданих продуктів неможливо зібрати страву або продукт незрозумілий, постав тут одне уточнювальне питання; інакше null
-             */
-            clarifying_question?: string | null;
             /** Id */
             id: number;
             /** Products */
@@ -160,6 +264,22 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Cooking Time Minutes */
+            cooking_time_minutes: number;
+            /** Servings */
+            servings: number;
+            /** Ingredients */
+            ingredients: components["schemas"]["IngredientRead"][];
+            /** Steps */
+            steps: string[];
+            /** Tips */
+            tips?: string | null;
+            /** Clarifying Question */
+            clarifying_question?: string | null;
         };
         /** RecipeRequest */
         RecipeRequest: {
@@ -173,12 +293,65 @@ export interface components {
              */
             servings: number;
         };
+        /** RegisterRequest */
+        RegisterRequest: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
         /**
-         * Unit
-         * @description Normalized measurement units. The model may not invent any others.
-         * @enum {string}
+         * UserProfile
+         * @description Cooking context of a user. Stored as JSONB on `users.profile`; every field has a default,
+         *     so profiles saved by an older version of this schema still validate.
          */
-        Unit: "г" | "мл" | "шт" | "ст. л." | "ч. л." | "за смаком";
+        UserProfile: {
+            /**
+             * Allergies
+             * @default []
+             */
+            allergies: string[];
+            /**
+             * Diets
+             * @default []
+             */
+            diets: ("vegetarian" | "vegan" | "pescatarian" | "gluten_free" | "lactose_free" | "halal" | "fasting")[];
+            /**
+             * Disliked
+             * @default []
+             */
+            disliked: string[];
+            /**
+             * Equipment
+             * @default []
+             */
+            equipment: ("oven" | "stovetop" | "microwave" | "multicooker" | "air_fryer" | "blender")[];
+            /**
+             * Default Servings
+             * @default 2
+             */
+            default_servings: number;
+            /**
+             * Pantry
+             * @default []
+             */
+            pantry: string[];
+        };
+        /** UserRead */
+        UserRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -241,12 +414,269 @@ export interface operations {
             };
         };
     };
-    create_recipe_api_v1_recipes_post: {
+    register_api_v1_auth_register_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_me_api_v1_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_me_api_v1_me_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_recipes_api_v1_me_recipes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_profile_api_v1_me_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_profile_api_v1_me_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserProfile"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_recipe_api_v1_recipes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
         };
         requestBody: {
             content: {

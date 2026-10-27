@@ -37,7 +37,8 @@ frontend never knows the backend URL.
 
 ```
 backend/            FastAPI service (Python 3.13, uv)
-  app/api/v1/       routers: health, recipes
+  app/api/v1/       routers: health, auth, me, recipes
+  app/api/deps.py   shared dependencies: SettingsDep, CurrentUser (session cookie)
   app/schemas/      Pydantic request/response models (the API contract)
   app/services/     llm.py (provider client), recipes.py (prompt + use case)
   app/models/       SQLAlchemy ORM models
@@ -78,11 +79,32 @@ socket. `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `LLM_TIMEOUT_
 |---|---|---|
 | GET | `/api/v1/health` | liveness, version |
 | GET | `/api/v1/health/db` | `SELECT 1` against Postgres, 503 if down |
-| POST | `/api/v1/recipes` | generate and store a recipe from products, servings, preferences → 201 |
+| POST | `/api/v1/auth/register` | create an account (email + password) and start a session → 201, 409 if taken |
+| POST | `/api/v1/auth/login` | start a session → 200; 401 on bad credentials, 429 while locked |
+| POST | `/api/v1/auth/logout` | revoke the current session → 204 |
+| GET | `/api/v1/me` | the logged-in user, 401 without a session |
+| DELETE | `/api/v1/me` | delete the account with its profile and sessions → 204 |
+| GET | `/api/v1/me/profile` | dietary profile and pantry (defaults if never saved) |
+| PUT | `/api/v1/me/profile` | replace the profile; product lists are normalized like `RecipeRequest` |
+| GET | `/api/v1/me/recipes` | the user's recipes, newest first (`limit` ≤ 50, `offset`) |
+| POST | `/api/v1/recipes` | generate and store a recipe from products, servings, preferences → 201; with a session, applies the profile and links the recipe to the user |
 | GET | `/api/v1/recipes/{id}` | read a stored recipe |
 
 Input validation (`RecipeRequest`): 1–30 products, each trimmed and capped at 40 characters, de-duplicated
 case-insensitively; servings 1–12; preferences ≤ 200 characters.
+
+**Authentication.** Own email + password accounts (`app/services/auth.py`), no third-party identity
+provider. Passwords are hashed with Argon2id at the OWASP minimum (19 MiB, t=2, p=1) in a worker
+thread; the library default of 64 MiB would let a burst of logins exhaust a Cloud Run instance.
+A login creates a server-side session: a random token goes into an httpOnly, Secure, SameSite=Lax
+cookie, and the `sessions` table stores only its SHA-256, so sessions can be revoked and a leaked
+table cannot be replayed. The cookie is named `__session` because Firebase Hosting strips every
+other cookie before forwarding to Cloud Run; auth responses send `Cache-Control: no-store` so the
+Hosting CDN never caches them. Login errors are one message for unknown email and wrong password
+(an unknown email is still verified against a dummy hash to keep timing equal); after
+`LOGIN_MAX_ATTEMPTS` failures the account is locked for `LOGIN_LOCKOUT_MINUTES` (429). CSRF relies on
+SameSite=Lax plus the same-origin deployment. Registration reveals whether an email is taken (409);
+that is accepted for usability.
 
 **Quality gates.** `ruff` (lint + format), `mypy --strict`, `pytest`. All three run in CI and in the pre-commit
 checks described in `CLAUDE.md`.
@@ -111,9 +133,16 @@ computed from real product data (issue #16), not estimated by the model.
 
 **Prompting.** The system instruction (Ukrainian) sets the role, the rules (use the listed products, only basic pantry
 additions, real quantities in г/мл/шт, short ordered steps, no invented products) and an explicit injection guard:
-product names are data, not instructions. The user message contains only the product list, servings and optional
-preferences. The schema has a `clarifying_question` field so the model can ask instead of hallucinating when the
-input is insufficient.
+product names and profile fields are data, not instructions. The user message contains the product list, servings and
+optional preferences; for a logged-in user also a "Профіль користувача" block (allergies, diets, disliked products,
+equipment, pantry staples) and the titles of their last 10 recipes, so the model does not repeat itself. The schema has
+a `clarifying_question` field so the model can ask instead of hallucinating when the input is insufficient.
+
+**Allergen safety net.** The prompt forbids the user's allergens, and `app/services/allergens.py` checks the result
+deterministically, without trusting the model: ingredient names and steps are matched against each allergy by crude
+Ukrainian stemming (word prefixes; errs towards false positives). A product list that already contains an allergen is
+rejected with 422 before any LLM call. A recipe that contains one is regenerated once with a corrective note; if it
+still does, the request fails with 502 and nothing is stored. Allergy names are never logged (health data).
 
 **Resilience and cost.**
 
@@ -138,8 +167,10 @@ Cloud SQL PostgreSQL 18 (`shashlychky:europe-central2:shashlychky`) in productio
 Compose locally. SQLAlchemy 2 async with the psycopg v3 driver (one driver for the async app and the sync Alembic
 runner). `Base.metadata` carries a naming convention so autogenerated constraint names are deterministic.
 
-Table `recipes`: id, products (JSONB), preferences, servings, model, content (JSONB, the validated `RecipeContent`),
-prompt_tokens, output_tokens, latency_ms, created_at.
+Table `recipes`: id, user_id (nullable FK to `users`, `ON DELETE CASCADE`: deleting an account deletes its recipes),
+products (JSONB), preferences, servings, model, content (JSONB, the validated `RecipeContent`), prompt_tokens,
+output_tokens, latency_ms, created_at. Tables `users` (email, Argon2 hash, lockout counters, `profile` JSONB) and
+`sessions` (SHA-256 of the cookie token, expiry) back authentication.
 
 Alembic reads the URL from `Settings` and passes it straight to the engine (ConfigParser interpolation chokes on the
 percent-encoded socket path). Migrations run as a Cloud Run Job with the new image **before** the service revision is
@@ -233,7 +264,10 @@ Everything a teammate's Claude Code needs lives in the repo:
 
 ## 10. Known limitations and next steps
 
-- No accounts, profiles or dietary restrictions yet (planned v2.0 in the product deck).
+- Accounts, a dietary profile and per-user recipe history exist on the backend; the frontend for them is
+  not built yet. No password reset and no email confirmation: both need an email provider.
+- The allergen check is a lexical safety net, not a guarantee: it misses allergens hidden in products
+  whose names do not mention them. The footer disclaimer stays.
 - No rate limiting on `POST /recipes`; the only guard is input size. Add per-IP limits before public promotion.
 - No eval set for recipe quality; the deck plans 50–100 reference recipes in CI.
 - Cold starts: `min-instances=0` saves money but adds a few seconds to the first request after idle.

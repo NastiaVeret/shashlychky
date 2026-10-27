@@ -12,14 +12,18 @@ nutrition service, not estimated by the model.
 import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, Self
+from typing import TYPE_CHECKING, Annotated, Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+if TYPE_CHECKING:
+    from app.models.recipe import Recipe as RecipeModel
 
 MAX_PRODUCTS = 30
 MAX_PRODUCT_LEN = 40
 MAX_INGREDIENTS = 25
 MAX_STEPS = 20
+MAX_STEP_LEN = 300
 
 
 class Unit(StrEnum):
@@ -54,17 +58,33 @@ _UNIT_ALIASES: dict[str, Unit] = {
     "штуки": Unit.PIECE,
     "штук": Unit.PIECE,
     "pcs": Unit.PIECE,
+    "зубчик": Unit.PIECE,
+    "зубчики": Unit.PIECE,
+    "зубчиків": Unit.PIECE,
+    "зубок": Unit.PIECE,
+    "зубки": Unit.PIECE,
+    "головка": Unit.PIECE,
+    "головки": Unit.PIECE,
+    "пучок": Unit.PIECE,
+    "пучки": Unit.PIECE,
+    "пучків": Unit.PIECE,
     "стл": Unit.TABLESPOON,
     "стложка": Unit.TABLESPOON,
     "столоваложка": Unit.TABLESPOON,
     "столовіложки": Unit.TABLESPOON,
     "столовихложок": Unit.TABLESPOON,
+    "столовоїложки": Unit.TABLESPOON,
+    "стложки": Unit.TABLESPOON,
+    "стложок": Unit.TABLESPOON,
     "tbsp": Unit.TABLESPOON,
     "чл": Unit.TEASPOON,
     "чложка": Unit.TEASPOON,
     "чайналожка": Unit.TEASPOON,
     "чайніложки": Unit.TEASPOON,
     "чайнихложок": Unit.TEASPOON,
+    "чайноїложки": Unit.TEASPOON,
+    "чложки": Unit.TEASPOON,
+    "чложок": Unit.TEASPOON,
     "tsp": Unit.TEASPOON,
     "засмаком": Unit.TO_TASTE,
     "досмаку": Unit.TO_TASTE,
@@ -91,14 +111,31 @@ _SCALED_UNITS: dict[str, tuple[Unit, float]] = {
     "склянки": (Unit.MILLILITER, 250),
     "склянок": (Unit.MILLILITER, 250),
     "стакан": (Unit.MILLILITER, 250),
+    "стакани": (Unit.MILLILITER, 250),
+    "стаканів": (Unit.MILLILITER, 250),
+    "чашка": (Unit.MILLILITER, 250),
+    "чашки": (Unit.MILLILITER, 250),
 }
 
-_STEP_NUMBERING = re.compile(r"^\s*\d+\s*[.)]\s*")
+_STEP_NUMBERING = re.compile(r"^\s*\d{1,2}[.)]\s+")
 
 
 def _unit_key(raw: str) -> str:
     """Fold a written unit to its comparable form: lowercase letters and digits only."""
     return "".join(ch for ch in raw.casefold() if ch.isalnum())
+
+
+def normalize_product_names(products: list[str]) -> list[str]:
+    """Trim, drop empties, cap length, de-duplicate case-insensitively, keep order."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in products:
+        name = " ".join(raw.split())[:MAX_PRODUCT_LEN]
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            result.append(name)
+    return result
 
 
 class RecipeRequest(BaseModel):
@@ -109,15 +146,7 @@ class RecipeRequest(BaseModel):
     @field_validator("products")
     @classmethod
     def normalize_products(cls, products: list[str]) -> list[str]:
-        """Trim, drop empties, cap length, de-duplicate case-insensitively, keep order."""
-        seen: set[str] = set()
-        result: list[str] = []
-        for raw in products:
-            name = " ".join(raw.split())[:MAX_PRODUCT_LEN]
-            key = name.casefold()
-            if name and key not in seen:
-                seen.add(key)
-                result.append(name)
+        result = normalize_product_names(products)
         if not result:
             raise ValueError("Потрібен хоча б один продукт")
         return result
@@ -148,20 +177,28 @@ class Ingredient(BaseModel):
             return data
 
         quantity = data.get("quantity")
-        amount = float(quantity) if isinstance(quantity, int | float) else None
-        if amount is not None and amount <= 0:
-            amount = None
+        if isinstance(quantity, bool):
+            raise ValueError("Кількість має бути числом, не true/false")
+        amount: float | None = (
+            float(quantity)
+            if isinstance(quantity, int | float) and not isinstance(quantity, bool)
+            else None
+        )
 
         key = _unit_key(raw_unit)
         if scaled := _SCALED_UNITS.get(key):
             unit, factor = scaled
-            amount = None if amount is None else round(amount * factor, 2)
+            if amount is not None:
+                quantity = round(amount * factor, 2)
         elif alias := _UNIT_ALIASES.get(key):
             unit = alias
         else:
             raise ValueError(f"Невідома одиниця '{raw_unit}'. Дозволені лише: {UNITS_HINT}")
 
-        return {**data, "unit": unit, "quantity": amount}
+        if amount is not None and amount <= 0:
+            quantity = None
+        # Anything else (a numeric string, None) is left for Pydantic to coerce or reject.
+        return {**data, "unit": unit, "quantity": quantity}
 
     @model_validator(mode="after")
     def reconcile_quantity(self) -> Self:
@@ -181,7 +218,7 @@ class RecipeContent(BaseModel):
     cooking_time_minutes: int = Field(ge=1, le=600)
     servings: int = Field(ge=1, le=12)
     ingredients: list[Ingredient] = Field(min_length=1, max_length=MAX_INGREDIENTS)
-    steps: list[str] = Field(
+    steps: list[Annotated[str, Field(max_length=MAX_STEP_LEN)]] = Field(
         min_length=1,
         max_length=MAX_STEPS,
         description="Кроки приготування по порядку, одна дія на крок, без нумерації",
@@ -200,16 +237,49 @@ class RecipeContent(BaseModel):
     @classmethod
     def normalize_steps(cls, steps: list[str]) -> list[str]:
         """Collapse whitespace, strip the model's own numbering, drop empties."""
-        result = [" ".join(_STEP_NUMBERING.sub("", step).split())[:300] for step in steps]
+        result = [" ".join(_STEP_NUMBERING.sub("", step).split()) for step in steps]
         cleaned = [step for step in result if step]
         if not cleaned:
             raise ValueError("Рецепт має містити хоча б один крок")
         return cleaned
 
 
-class RecipeRead(RecipeContent):
+class IngredientRead(BaseModel):
+    """An ingredient as stored. `unit` is free text here: rows written before the `Unit` enum
+    existed keep whatever the model said back then ("зубчики", "пучок") and must stay readable."""
+
+    name: str
+    quantity: float | None = None
+    unit: str
+    have_at_home: bool = True
+
+
+class RecipeRead(BaseModel):
+    """API response for a stored recipe. Deliberately lenient: the strict bounds in
+    `RecipeContent` are the contract for *generation*; a recipe that was valid when it was
+    saved must never turn into a 500 because the contract got stricter later."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     products: list[str]
     created_at: datetime
+    title: str
+    description: str
+    cooking_time_minutes: int
+    servings: int
+    ingredients: list[IngredientRead]
+    steps: list[str]
+    tips: str | None = None
+    clarifying_question: str | None = None
+
+    @classmethod
+    def from_model(cls, recipe: "RecipeModel") -> "RecipeRead":
+        return cls.model_validate(
+            {
+                **recipe.content,
+                "id": recipe.id,
+                "products": recipe.products,
+                "created_at": recipe.created_at,
+            }
+        )
