@@ -119,7 +119,11 @@ class SilpoOAuthProvider(OAuthClientProvider):
 
     async def _initialize(self) -> None:
         await super()._initialize()
-        expiry = getattr(self.context.storage, "expiry_time", lambda: None)()
+        storage = self.context.storage
+        if hasattr(storage, "expiry_time_async"):
+            expiry = await storage.expiry_time_async()
+        else:
+            expiry = getattr(storage, "expiry_time", lambda: None)()
         if expiry is not None:
             self.context.token_expiry_time = expiry
 

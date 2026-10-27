@@ -95,6 +95,7 @@ jobs:
             DB_HOST=/cloudsql/${{ env.CLOUDSQL_INSTANCE }}
             DB_NAME=${{ env.DB_NAME }}
             DB_USER=${{ env.DB_USER }}
+            SILPO_MCP_URL=https://mcp.silpo.ua/mcp
             ${{ secrets.BACKEND_ENV_VARS }}
 
   frontend:

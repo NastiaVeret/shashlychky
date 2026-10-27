@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 import httpx
 from mcp import ClientSession
+from mcp.client.auth import TokenStorage
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.exceptions import McpError
 from mcp.types import TextContent
@@ -40,6 +41,13 @@ class SilpoError(RuntimeError):
         self.tool, self.text = tool, text
 
 
+class SilpoNotConnectedError(SilpoError):
+    """No Silpo login on this deployment: run scripts/silpo_login.py --to-db once."""
+
+    def __init__(self) -> None:
+        super().__init__("auth", "Сільпо не підключено: потрібен одноразовий вхід")
+
+
 class NoDeliverySlotsError(SilpoError):
     """The store has no available delivery slot, so nothing cart-related can proceed."""
 
@@ -51,15 +59,34 @@ RATE_LIMIT = re.compile(r"429|rate.?limit|too many|забагато", re.IGNOREC
 RETRY_DELAYS = (1, 2, 4)  # секунди; експоненціальна пауза при ліміті запитів
 
 
+async def _no_browser(url: str) -> None:
+    raise SilpoNotConnectedError()
+
+
+async def _no_callback() -> tuple[str, str | None]:
+    raise SilpoNotConnectedError()
+
+
 @asynccontextmanager
-async def connect(url: str) -> AsyncIterator["SilpoClient"]:
+async def connect(
+    url: str, storage: TokenStorage | None = None, *, interactive: bool = True
+) -> AsyncIterator["SilpoClient"]:
     """Підключення до mock (localhost, без логіну) або до реального Сільпо (OAuth).
 
     async with connect(os.environ["SILPO_MCP_URL"]) as silpo:
         found = await silpo.find_products(["яйця"])
+
+    `storage` keeps the OAuth tokens (file by default; the web service passes the DB storage).
+    `interactive=False` never opens a browser: with no usable token it raises
+    SilpoNotConnectedError instead of hanging on a login nobody can complete.
     """
     local = urlparse(url).hostname in ("localhost", "127.0.0.1")
-    auth = None if local else make_auth(url)
+    if local:
+        auth = None
+    elif interactive:
+        auth = make_auth(url, storage)
+    else:
+        auth = make_auth(url, storage, redirect_handler=_no_browser, callback_handler=_no_callback)
     async with streamablehttp_client(
         url, auth=auth, timeout=CALL_TIMEOUT, sse_read_timeout=SSE_READ_TIMEOUT
     ) as (read, write, _):

@@ -20,7 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import NutritionUnavailableError
-from app.integrations.silpo import SilpoError, connect
+from app.db.session import get_sessionmaker
+from app.integrations.silpo import SilpoError, SilpoNotConnectedError, connect
+from app.integrations.silpo.db_storage import DbTokenStorage
 from app.schemas.nutrition import (
     GoalComparison,
     IngredientNutrition,
@@ -265,9 +267,14 @@ class ConnectedSilpoProvider:
         self._url = url
 
     async def lookup(self, names: list[str]) -> dict[str, ProductNutrition | None]:
+        storage = DbTokenStorage(get_sessionmaker())
         try:
-            async with connect(self._url) as silpo:
+            async with connect(self._url, storage, interactive=False) as silpo:
                 return await SilpoNutritionProvider(silpo).lookup(names)
+        except SilpoNotConnectedError as exc:
+            raise NutritionUnavailableError(
+                "Сільпо не підключено: потрібен одноразовий вхід адміністратора"
+            ) from exc
         except (SilpoError, McpError, httpx.HTTPError, TimeoutError, OSError) as exc:
             logger.warning("silpo connect failed: %s: %s", type(exc).__name__, exc)
             raise NutritionUnavailableError() from exc

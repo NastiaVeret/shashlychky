@@ -271,6 +271,7 @@ Everything a teammate's Claude Code needs lives in the repo:
 
 ## 10. Known limitations and next steps
 
+- Silpo uses one shared OAuth login stored in `silpo_tokens` (row 1), enough for product search and КБЖВ; the cart needs per-user tokens and a web callback route (not built yet). Reconnect procedure: README, "Silpo login".
 - Accounts, a dietary profile and per-user recipe history exist. No password reset and no email
   confirmation: both need an email provider.
 - The allergen check is a lexical safety net, not a guarantee: it misses allergens hidden in products

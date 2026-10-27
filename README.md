@@ -74,6 +74,21 @@ make migration m="add_orders_table"   # after changing models: autogenerate, lin
 make migrate                          # apply pending migrations
 ```
 
+### Silpo login (one-off, per environment)
+
+The Silpo MCP server needs an OAuth login with a real Silpo account. Tokens live in the `silpo_tokens` table (one
+shared row for product search and КБЖВ). To (re)connect: log in once on a laptop, then copy the tokens into the target database:
+
+```bash
+cd backend
+SILPO_MCP_URL=https://mcp.silpo.ua/mcp uv run python -m scripts.silpo_login   # browser login → backend/.silpo_tokens.json
+uv run python -m scripts.silpo_login --import-file                              # into the local database
+# production: through the Cloud SQL Auth Proxy (below), then
+DB_PORT=5433 DB_PASSWORD=$(gcloud secrets versions access latest --secret db-password) uv run python -m scripts.silpo_login --import-file
+```
+
+The service refreshes the token itself afterwards; it never opens a browser. Without a row it answers 503 for КБЖВ.
+
 To reach the production database from a laptop use the Cloud SQL Auth Proxy (needs `roles/cloudsql.client`):
 
 ```bash

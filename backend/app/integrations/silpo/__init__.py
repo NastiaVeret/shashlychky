@@ -10,7 +10,15 @@ from app.integrations.silpo.client import (
     NoDeliverySlotsError,
     SilpoClient,
     SilpoError,
+    SilpoNotConnectedError,
     connect,
 )
 
-__all__ = ["AddResult", "NoDeliverySlotsError", "SilpoClient", "SilpoError", "connect"]
+__all__ = [
+    "AddResult",
+    "NoDeliverySlotsError",
+    "SilpoClient",
+    "SilpoError",
+    "SilpoNotConnectedError",
+    "connect",
+]
