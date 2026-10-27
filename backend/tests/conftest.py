@@ -62,7 +62,8 @@ def failing_llm() -> Iterator[FakeLLM]:
 
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    # https, so the client keeps and sends the Secure session cookie like a browser would
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as c:
         yield c
 
 

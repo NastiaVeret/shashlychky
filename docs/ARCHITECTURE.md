@@ -37,7 +37,8 @@ frontend never knows the backend URL.
 
 ```
 backend/            FastAPI service (Python 3.13, uv)
-  app/api/v1/       routers: health, recipes
+  app/api/v1/       routers: health, auth, me, recipes
+  app/api/deps.py   shared dependencies: SettingsDep, CurrentUser (session cookie)
   app/schemas/      Pydantic request/response models (the API contract)
   app/services/     llm.py (provider client), recipes.py (prompt + use case)
   app/models/       SQLAlchemy ORM models
@@ -78,11 +79,28 @@ socket. `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `LLM_TIMEOUT_
 |---|---|---|
 | GET | `/api/v1/health` | liveness, version |
 | GET | `/api/v1/health/db` | `SELECT 1` against Postgres, 503 if down |
+| POST | `/api/v1/auth/register` | create an account (email + password) and start a session → 201, 409 if taken |
+| POST | `/api/v1/auth/login` | start a session → 200; 401 on bad credentials, 429 while locked |
+| POST | `/api/v1/auth/logout` | revoke the current session → 204 |
+| GET | `/api/v1/me` | the logged-in user, 401 without a session |
 | POST | `/api/v1/recipes` | generate and store a recipe from products, servings, preferences → 201 |
 | GET | `/api/v1/recipes/{id}` | read a stored recipe |
 
 Input validation (`RecipeRequest`): 1–30 products, each trimmed and capped at 40 characters, de-duplicated
 case-insensitively; servings 1–12; preferences ≤ 200 characters.
+
+**Authentication.** Own email + password accounts (`app/services/auth.py`), no third-party identity
+provider. Passwords are hashed with Argon2id at the OWASP minimum (19 MiB, t=2, p=1) in a worker
+thread; the library default of 64 MiB would let a burst of logins exhaust a Cloud Run instance.
+A login creates a server-side session: a random token goes into an httpOnly, Secure, SameSite=Lax
+cookie, and the `sessions` table stores only its SHA-256, so sessions can be revoked and a leaked
+table cannot be replayed. The cookie is named `__session` because Firebase Hosting strips every
+other cookie before forwarding to Cloud Run; auth responses send `Cache-Control: no-store` so the
+Hosting CDN never caches them. Login errors are one message for unknown email and wrong password
+(an unknown email is still verified against a dummy hash to keep timing equal); after
+`LOGIN_MAX_ATTEMPTS` failures the account is locked for `LOGIN_LOCKOUT_MINUTES` (429). CSRF relies on
+SameSite=Lax plus the same-origin deployment. Registration reveals whether an email is taken (409);
+that is accepted for usability.
 
 **Quality gates.** `ruff` (lint + format), `mypy --strict`, `pytest`. All three run in CI and in the pre-commit
 checks described in `CLAUDE.md`.
@@ -224,7 +242,8 @@ Everything a teammate's Claude Code needs lives in the repo:
 
 ## 10. Known limitations and next steps
 
-- No accounts, profiles or dietary restrictions yet (planned v2.0 in the product deck).
+- Accounts exist (email + password, see "Authentication" in section 3), but no profiles or dietary
+  restrictions yet. No password reset and no email confirmation: both need an email provider.
 - No rate limiting on `POST /recipes`; the only guard is input size. Add per-IP limits before public promotion.
 - No eval set for recipe quality; the deck plans 50–100 reference recipes in CI.
 - Cold starts: `min-instances=0` saves money but adds a few seconds to the first request after idle.
