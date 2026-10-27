@@ -135,7 +135,7 @@ async def recent_titles(db: AsyncSession, user_id: uuid.UUID) -> list[str]:
     stmt = (
         select(Recipe.content["title"].astext)
         .where(Recipe.user_id == user_id)
-        .order_by(Recipe.created_at.desc())
+        .order_by(Recipe.created_at.desc(), Recipe.id.desc())
         .limit(RECENT_TITLES_LIMIT)
     )
     return list((await db.scalars(stmt)).all())
