@@ -259,6 +259,12 @@ class SilpoNutritionProvider:
         )
 
 
+def _not_connected() -> NutritionUnavailableError:
+    return NutritionUnavailableError(
+        "Сільпо не підключено: потрібен одноразовий вхід адміністратора"
+    )
+
+
 class ConnectedSilpoProvider:
     """Opens one MCP session per lookup. A localhost URL is the mock (no OAuth); the real server
     needs a logged-in token file, which only exists on a developer machine for now."""
@@ -272,9 +278,17 @@ class ConnectedSilpoProvider:
             async with connect(self._url, storage, interactive=False) as silpo:
                 return await SilpoNutritionProvider(silpo).lookup(names)
         except SilpoNotConnectedError as exc:
-            raise NutritionUnavailableError(
-                "Сільпо не підключено: потрібен одноразовий вхід адміністратора"
-            ) from exc
+            raise _not_connected() from exc
+        except BaseExceptionGroup as group:
+            # The MCP SDK runs the transport in an anyio task group, so errors raised inside
+            # its callbacks (e.g. "no login stored") come out wrapped in an ExceptionGroup.
+            if group.subgroup(SilpoNotConnectedError) is not None:
+                raise _not_connected() from group
+            expected = (SilpoError, McpError, httpx.HTTPError, TimeoutError, OSError)
+            if group.subgroup(expected) is not None:
+                logger.warning("silpo connect failed: %s", group)
+                raise NutritionUnavailableError() from group
+            raise
         except (SilpoError, McpError, httpx.HTTPError, TimeoutError, OSError) as exc:
             logger.warning("silpo connect failed: %s: %s", type(exc).__name__, exc)
             raise NutritionUnavailableError() from exc
