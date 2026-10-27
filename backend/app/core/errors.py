@@ -30,6 +30,12 @@ class NotAuthenticatedError(AppError):
     detail = "Потрібно увійти"
 
 
+class SessionExpiredError(NotAuthenticatedError):
+    """A session cookie was sent but it is expired, revoked or forged. The handler clears it."""
+
+    detail = "Сесія закінчилася, увійдіть знову"
+
+
 class InvalidCredentialsError(NotAuthenticatedError):
     """Wrong email or password. One message for both, so emails cannot be probed via login."""
 
