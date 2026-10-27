@@ -1,7 +1,9 @@
 import pytest
 from httpx import AsyncClient
 
+from app.api.deps import SESSION_COOKIE
 from app.schemas.recipes import Ingredient, RecipeContent
+from app.services.recipes import RECENT_TITLES_LIMIT
 from tests.api.v1.test_auth import register, unique_email
 from tests.conftest import SAMPLE_RECIPE, FakeLLM
 
@@ -130,3 +132,52 @@ async def test_deleting_account_deletes_its_recipes(
     assert (await client.delete("/api/v1/me")).status_code == 204
 
     assert (await client.get(f"/api/v1/recipes/{recipe_id}")).status_code == 404
+
+
+async def test_stale_session_cookie_returns_401_and_clears_cookie(
+    client: AsyncClient, fake_llm: FakeLLM, db_required: None
+) -> None:
+    response = await client.post(
+        "/api/v1/recipes",
+        json={"products": ["яйця"]},
+        headers={"Cookie": f"{SESSION_COOKIE}=not-a-real-token"},
+    )
+
+    assert response.status_code == 401
+    assert "увійдіть знову" in response.json()["detail"]
+    assert fake_llm.calls == []  # nothing was generated as anonymous
+    assert f"{SESSION_COOKIE}=" in response.headers.get("set-cookie", "")
+    assert "max-age=0" in response.headers["set-cookie"].lower()
+
+
+async def test_recent_titles_are_capped(
+    client: AsyncClient, fake_llm: FakeLLM, logged_in: None
+) -> None:
+    fake_llm.responses = [
+        SAMPLE_RECIPE.model_copy(update={"title": f"Страва {i}"})
+        for i in range(RECENT_TITLES_LIMIT + 1)
+    ]
+    for _ in range(RECENT_TITLES_LIMIT + 1):
+        assert (
+            await client.post("/api/v1/recipes", json={"products": ["яйця"]})
+        ).status_code == 201
+
+    await client.post("/api/v1/recipes", json={"products": ["яйця"]})
+
+    prompt = fake_llm.calls[-1]["user"]
+    assert "- Страва 0\n" not in prompt and not prompt.endswith("- Страва 0")  # oldest dropped
+    assert f"- Страва {RECENT_TITLES_LIMIT}" in prompt
+    assert prompt.count("- Страва ") == RECENT_TITLES_LIMIT
+
+
+async def test_my_recipes_do_not_leak_between_users(
+    client: AsyncClient, fake_llm: FakeLLM, logged_in: None
+) -> None:
+    mine = (await client.post("/api/v1/recipes", json={"products": ["яйця"]})).json()["id"]
+    assert (await client.post("/api/v1/auth/logout")).status_code == 204
+    assert (await register(client, unique_email())).status_code == 201
+
+    other = await client.get("/api/v1/me/recipes")
+
+    assert other.status_code == 200
+    assert mine not in [r["id"] for r in other.json()]
