@@ -1,0 +1,74 @@
+# Deploys every PR's frontend to a temporary Firebase Hosting preview channel
+# (expires in 7 days). /api/** on the preview points to the production backend.
+# Runs only for branches in this repository (forks have no access to the GCP identity).
+
+name: Frontend preview
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/preview.yml"
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    name: Preview channel
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set Cloud Run region in firebase.json
+        run: |
+          jq --arg r "$REGION" '(.hosting.rewrites[] | select(.run) | .run.region) = $r' firebase.json > firebase.tmp.json
+          mv firebase.tmp.json firebase.json
+
+      - name: Deploy preview channel
+        id: deploy
+        run: |
+          npx --yes firebase-tools@14 hosting:channel:deploy "pr-${{ github.event.number }}" \
+            --project "$PROJECT_ID" --expires 7d --non-interactive --json > result.json
+          echo "url=$(jq -r '.result | to_entries[0].value.url' result.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on the PR
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.url }}';
+            const marker = '<!-- firebase-preview -->';
+            const body = `${marker}\nFrontend preview: ${url}\n\nExpires in 7 days. \`/api\` on the preview talks to the production backend.`;
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body?.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }

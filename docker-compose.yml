@@ -1,0 +1,38 @@
+# Local infrastructure. `docker compose up -d db` for Postgres only,
+# `docker compose up --build` to also run the backend in a container (mimics Cloud Run).
+# The frontend is static (Firebase Hosting in production); locally run `npm run dev` in frontend/.
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: shashlychky
+    ports:
+      # host port is configurable: DB_PORT=5434 docker compose up -d db (then set DB_PORT=5434 for the app too)
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shashlychky"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8080"
+    environment:
+      ENVIRONMENT: docker
+      CORS_ORIGINS: http://localhost:5173
+      DB_HOST: db
+    env_file:
+      - path: ./backend/.env
+        required: false
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

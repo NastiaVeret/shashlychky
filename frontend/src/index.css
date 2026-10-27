@@ -1,0 +1,38 @@
+@import 'tailwindcss';
+
+/* Design tokens from the Canva deck "шашлички-1": olive background, dark green text,
+   cream cards, warm orange accent. Use ONLY these tokens, never raw hex in components. */
+@theme {
+  --color-olive-50: #f5f8ec;
+  --color-olive-100: #e7eed3;
+  --color-olive-200: #d0ddab;
+  --color-olive-300: #b6cb86;
+  --color-olive-400: #a3bd6c;
+  --color-olive-600: #6f8a3c;
+  --color-olive-800: #35502a;
+  --color-olive-900: #1f3a1c;
+
+  --color-cream-50: #fcf8ee;
+  --color-cream-100: #f5ecd6;
+  --color-cream-200: #ead9b4;
+  --color-cream-300: #d9c08c;
+
+  --color-accent-400: #ea9a62;
+  --color-accent-500: #e0783f;
+  --color-accent-600: #c25f2a;
+
+  --font-display: 'Fraunces', 'Georgia', serif;
+  --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  --radius-card: 1.25rem;
+  --shadow-card: 0 10px 30px -12px rgb(31 58 28 / 0.25);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-olive-300 font-sans text-olive-900 antialiased;
+  }
+}

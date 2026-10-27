@@ -1,1 +1,202 @@
-# shashlychky
+# Shashlychky
+
+Monorepo: FastAPI backend on Google Cloud Run + React frontend on Firebase Hosting, deployed via GitHub Actions.
+
+```
+backend/    FastAPI (Python 3.13, uv)
+frontend/   React 19 + TypeScript + Vite
+.github/    CI (lint, tests, build), deployment, PR preview channels
+.claude/    shared Claude Code configuration (rules, skills, agents, hooks)
+```
+
+Full engineering overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## What it does (v1)
+
+The user lists the products they have at home; the backend asks Gemini (`gemini-3.1-flash-lite`, the cheapest
+model) for one realistic dish as structured JSON (title, ingredients with quantities and "have at home / to buy"
+markers, steps, optional clarifying question), validates it, stores it in Postgres and the React UI renders the
+recipe card. Each recipe gets a shareable URL `/recipes/<id>`.
+
+LLM practices in `backend/app/services/llm.py`: system prompt separated from user data (products are data, not
+instructions), provider-enforced JSON schema + Pydantic validation, one corrective retry on invalid output, SDK
+12 s per-attempt deadline with one fallback to `gemini-3.5-flash-lite` when the primary is slow or overloaded, thinking disabled, bounded output tokens, token usage and latency
+logged and stored per recipe, graceful 503/502 for the UI.
+
+## Quick start
+
+```bash
+make install      # uv sync, npm install, .env files, pre-commit hooks
+make dev          # Postgres (docker) + API on :8000 + Vite on :5173
+make check        # everything CI runs
+make help         # all targets
+```
+
+If port 5432 is taken on your machine: `DB_PORT=5434 make dev` (the variable reaches docker compose and the backend).
+
+## Local development
+
+Backend (http://localhost:8000, Swagger at /docs):
+
+```bash
+docker compose up -d db                # local Postgres 18 on localhost:5432 (DB_PORT=5434 docker compose up -d db if 5432 is taken)
+cd backend
+cp .env.example .env                   # put your Gemini API key into GEMINI_API_KEY (https://aistudio.google.com/apikey)
+uv sync
+uv run alembic upgrade head            # apply migrations
+uv run uvicorn app.main:app --reload
+```
+
+Frontend (http://localhost:5173, `/api` requests are proxied to the backend):
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Backend in Docker together with the database (as in Cloud Run): `docker compose up --build`, then http://localhost:8000.
+The frontend is static; locally always run it with `npm run dev`.
+
+### Database
+
+PostgreSQL on Cloud SQL in production (`shashlychky:europe-central2:shashlychky`), Postgres 18 in Docker locally.
+ORM: SQLAlchemy 2 (async, psycopg driver). Migrations: Alembic, rules in `.claude/rules/database.md`, workflow in the `/migration` skill.
+
+```bash
+make migration m="add_orders_table"   # after changing models: autogenerate, lint, apply, alembic check
+make migrate                          # apply pending migrations
+```
+
+To reach the production database from a laptop use the Cloud SQL Auth Proxy (needs `roles/cloudsql.client`):
+
+```bash
+brew install cloud-sql-proxy
+cloud-sql-proxy shashlychky:europe-central2:shashlychky --port 5433
+# then DB_PORT=5433 DB_PASSWORD=$(gcloud secrets versions access latest --secret db-password) uv run alembic current
+```
+
+## API contract: generated TypeScript types
+
+Backend Pydantic schemas are the single source of truth. `make types` exports the OpenAPI document
+(`frontend/src/api/openapi.json`) and generates `frontend/src/api/schema.d.ts` with
+[openapi-typescript](https://openapi-ts.dev). Frontend code aliases types from it
+(`components['schemas']['RecipeRead']`) and never hand-writes API shapes. The `contract` CI job regenerates the
+types and fails if the committed files are stale, so a backend change that forgets `make types` cannot merge.
+
+## Pre-commit hooks and dependency updates
+
+`make install` installs [pre-commit](https://pre-commit.com) hooks (`.pre-commit-config.yaml`): ruff, mypy,
+prettier, oxlint, `uv lock` consistency, secret/large-file guards and a Conventional Commits message check.
+Dependabot (`.github/dependabot.yml`) opens weekly grouped PRs for uv, npm and GitHub Actions.
+
+## Checks
+
+```bash
+make check          # or individually:
+make check-backend  # ruff, mypy, pytest
+make check-frontend # oxlint, prettier, tsc + vite build
+make types-check    # generated types match the backend schema
+```
+
+## Deployment
+
+| Part | Where | How |
+|---|---|---|
+| Backend | Cloud Run service `shashlychky-backend` | Docker image pushed to Artifact Registry; connected to Cloud SQL via unix socket, `DB_PASSWORD` from Secret Manager |
+| Migrations | Cloud Run Job `shashlychky-migrate` | Same image, runs `alembic upgrade head` before the new service revision is deployed |
+| Frontend | Firebase Hosting (`https://PROJECT_ID.web.app`) | Static `dist/` upload; `/api/**` is rewritten to the Cloud Run backend, so frontend and API share one origin and no CORS is needed |
+
+Workflows:
+
+- `.github/workflows/ci.yml`: lint, typecheck, tests, build and the generated-types drift check on every PR and push to `main`.
+- `.github/workflows/deploy.yml`: on push to `main`: build backend image → run migrations job → deploy backend → deploy frontend (Firebase validates the Cloud Run rewrite target, so order matters).
+- `.github/workflows/preview.yml`: on every PR that touches `frontend/`, deploys a 7-day Firebase preview channel and comments the URL on the PR.
+
+### One-time GCP / Firebase setup
+
+Replace `PROJECT_ID`, `REGION`, `GITHUB_ORG/REPO`:
+
+```bash
+gcloud config set project PROJECT_ID
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com iamcredentials.googleapis.com \
+  firebase.googleapis.com firebasehosting.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
+
+# Cloud SQL + Secret Manager (instance created in the console; database and password secret)
+gcloud sql databases create shashlychky --instance shashlychky
+gcloud secrets create db-password --replication-policy=automatic
+printf '%s' '<postgres password>' | gcloud secrets versions add db-password --data-file=-
+gcloud secrets create gemini-api-key --replication-policy=automatic
+printf '%s' '<gemini api key>' | gcloud secrets versions add gemini-api-key --data-file=-
+# Cloud Run runtime service account must reach Cloud SQL and read the secret
+RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+gcloud projects add-iam-policy-binding PROJECT_ID --member="serviceAccount:${RUNTIME_SA}" --role=roles/cloudsql.client
+gcloud secrets add-iam-policy-binding db-password --member="serviceAccount:${RUNTIME_SA}" --role=roles/secretmanager.secretAccessor
+gcloud secrets add-iam-policy-binding gemini-api-key --member="serviceAccount:${RUNTIME_SA}" --role=roles/secretmanager.secretAccessor
+
+# Add Firebase to the project and create the Hosting site (one-off, needs Firebase CLI: npm i -g firebase-tools)
+firebase login
+firebase projects:addfirebase PROJECT_ID
+firebase hosting:sites:create PROJECT_ID --project PROJECT_ID   # site id = project id → https://PROJECT_ID.web.app
+
+# Artifact Registry
+gcloud artifacts repositories create shashlychky --repository-format=docker --location=REGION
+
+# Deployment service account
+gcloud iam service-accounts create deploy-sa
+for role in roles/run.admin roles/artifactregistry.writer roles/iam.serviceAccountUser \
+            roles/firebasehosting.admin roles/serviceusage.serviceUsageConsumer; do
+  gcloud projects add-iam-policy-binding PROJECT_ID \
+    --member="serviceAccount:deploy-sa@PROJECT_ID.iam.gserviceaccount.com" --role="$role"
+done
+
+# Workload Identity Federation for GitHub
+gcloud iam workload-identity-pools create github --location=global
+gcloud iam workload-identity-pools providers create-oidc github \
+  --location=global --workload-identity-pool=github \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-condition="assertion.repository=='GITHUB_ORG/REPO'"
+PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
+gcloud iam service-accounts add-iam-policy-binding deploy-sa@PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/GITHUB_ORG/REPO"
+```
+
+Then in GitHub → Settings → Secrets and variables → Actions → Variables:
+
+| Variable | Value |
+|---|---|
+| `GCP_PROJECT_ID` | project id (also the Firebase project and Hosting site id) |
+| `GCP_REGION` | Cloud Run region, e.g. `europe-central2` (the workflow writes it into `firebase.json`) |
+| `GCP_ARTIFACT_REPO` | `shashlychky` |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/github` |
+| `GCP_SERVICE_ACCOUNT` | `deploy-sa@PROJECT_ID.iam.gserviceaccount.com` |
+| `CLOUDSQL_INSTANCE` | `PROJECT_ID:REGION:INSTANCE`, e.g. `shashlychky:europe-central2:shashlychky` |
+
+Optional secret `BACKEND_ENV_VARS` (`KEY=value,KEY2=value2`) for backend environment variables.
+
+### Manual frontend deploy from a laptop
+
+```bash
+cd frontend && npm run build && npx firebase-tools deploy --only hosting --project PROJECT_ID
+```
+
+### Custom domain
+
+Firebase console → Hosting → Add custom domain. SSL is issued automatically. The `/api/**` rewrite keeps working on the custom domain.
+
+## Working with Claude Code
+
+The shared configuration lives in the repo and works the same for everyone:
+
+| What | Where | Purpose |
+|---|---|---|
+| Project context | `CLAUDE.md` | Commands, style, architecture decisions, workflow |
+| Per-area rules | `.claude/rules/` | `backend.md`, `frontend.md`, `database.md` load only when touching those folders, `git.md` always |
+| Skills | `.claude/skills/` | `/check` all checks, `/new-endpoint` endpoint by convention, `/new-page` React page, `/migration` Alembic migration, `/pr` commit and PR, `python-best-practices`, `react-best-practices` and `tailwind` idiom guides (loaded automatically when relevant) |
+| Agents | `.claude/agents/` | `reviewer` reviews a diff without changing code, `test-writer` writes tests by the project reference, `frontend-integrator` wires the frontend to the backend API (types, request functions, hooks, pages) |
+| Settings | `.claude/settings.json` | Allowlist for safe commands, deny reading `.env`, auto-format hook after every edit |
+
+Personal settings go to `.claude/settings.local.json` (gitignored).
+New rules and skills are added via PR, like code.
