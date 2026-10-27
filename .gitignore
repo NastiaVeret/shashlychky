@@ -35,3 +35,7 @@ npm-debug.log*
 .firebase/
 firebase-debug.log
 .firebaserc
+
+# Silpo OAuth tokens (dev only)
+.silpo_tokens.json
+.silpo_tokens.json.bak

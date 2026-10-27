@@ -32,8 +32,12 @@ SAMPLE_RECIPE = RecipeContent(
 class FakeLLM:
     """Deterministic stand-in for Gemini. Records prompts so tests can assert on them."""
 
-    def __init__(self, *, fail: Exception | None = None) -> None:
+    def __init__(
+        self, *, fail: Exception | None = None, responses: list[RecipeContent] | None = None
+    ) -> None:
         self.fail = fail
+        # Returned in order, one per call; SAMPLE_RECIPE once the queue is empty.
+        self.responses = list(responses or [])
         self.calls: list[dict[str, str]] = []
 
     async def generate[T: BaseModel](
@@ -42,7 +46,8 @@ class FakeLLM:
         self.calls.append({"system": system, "user": user})
         if self.fail:
             raise self.fail
-        data = schema.model_validate(SAMPLE_RECIPE.model_dump())
+        recipe = self.responses.pop(0) if self.responses else SAMPLE_RECIPE
+        data = schema.model_validate(recipe.model_dump())
         return LLMResult(data=data, model="fake", prompt_tokens=10, output_tokens=20, latency_ms=5)
 
 
@@ -94,7 +99,8 @@ def failing_llm() -> Iterator[FakeLLM]:
 
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    # https, so the client keeps and sends the Secure session cookie like a browser would
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as c:
         yield c
 
 

@@ -11,7 +11,7 @@ OPENAPI_TS := openapi-typescript@7.13.0   # pinned; not in package.json because 
 SCHEMA := frontend/src/api/schema.d.ts
 OPENAPI_JSON := frontend/src/api/openapi.json
 
-.PHONY: help install dev db db-stop backend frontend migrate migration seed types types-check \
+.PHONY: help install dev db db-stop backend frontend migrate migration seed silpo-mock types types-check \
         check check-backend check-frontend test test-backend format lint eval clean
 
 help: ## Show this help
@@ -42,6 +42,9 @@ migration: db ## Create a migration from model changes: make migration m="add_or
 		&& uv run ruff check --fix alembic/versions >/dev/null && uv run ruff format alembic/versions >/dev/null \
 		&& uv run alembic upgrade head && uv run alembic check
 	@echo "✔ review the new file in backend/alembic/versions/ before committing"
+
+silpo-mock: ## Run the in-memory Silpo MCP mock on http://127.0.0.1:8010/mcp (no OAuth)
+	cd backend && uv run python -m tests.silpo_mock.server
 
 seed: migrate ## Insert sample data into the local database
 	cd backend && uv run python -m scripts.seed

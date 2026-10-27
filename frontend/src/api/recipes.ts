@@ -8,6 +8,7 @@ export type RecipeRead = components['schemas']['RecipeRead'];
 
 export const recipeKeys = {
   all: ['recipes'] as const,
+  mine: ['recipes', 'mine'] as const,
   detail: (id: number) => ['recipes', id] as const,
 };
 
@@ -17,19 +18,22 @@ export const createRecipe = (body: RecipeRequest) =>
 export const getRecipe = (id: number, signal?: AbortSignal) =>
   apiFetch<RecipeRead>(`/api/v1/recipes/${id}`, { signal });
 
+/** The logged-in user's recipes, newest first. `limit` is 1..50 on the backend. */
+export const getMyRecipes = (
+  { limit, offset }: { limit: number; offset: number },
+  signal?: AbortSignal,
+) => {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return apiFetch<RecipeRead[]>(`/api/v1/me/recipes?${params}`, { signal });
+};
+
 export type RecipeNutrition = components['schemas']['RecipeNutrition'];
 export type NutritionFacts = components['schemas']['NutritionFacts'];
 
 export const nutritionKeys = {
-  detail: (id: number, dailyKcalGoal: number | null) =>
-    ['recipes', id, 'nutrition', dailyKcalGoal] as const,
+  detail: (id: number) => ['recipes', id, 'nutrition'] as const,
 };
 
-export const getRecipeNutrition = (
-  id: number,
-  dailyKcalGoal: number | null,
-  signal?: AbortSignal,
-) => {
-  const query = dailyKcalGoal ? `?daily_kcal_goal=${dailyKcalGoal}` : '';
-  return apiFetch<RecipeNutrition>(`/api/v1/recipes/${id}/nutrition${query}`, { signal });
-};
+// The goal comparison is pure arithmetic on the client; the server is asked once per recipe.
+export const getRecipeNutrition = (id: number, signal?: AbortSignal) =>
+  apiFetch<RecipeNutrition>(`/api/v1/recipes/${id}/nutrition`, { signal });

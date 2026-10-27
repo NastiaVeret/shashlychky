@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = 2048
     llm_temperature: float = 0.6
 
+    # Silpo MCP server. Empty disables the integration; a localhost URL is the mock (no OAuth).
+    silpo_mcp_url: str | None = None
+
+    # Auth. Secure cookies are accepted on http://localhost by Chrome and Firefox, so the
+    # default works locally too; set SESSION_COOKIE_SECURE=false only for Safari dev.
+    session_cookie_secure: bool = True
+    session_ttl_days: int = 30
+    # Per-account brute-force guard: after this many wrong passwords the account is locked.
+    login_max_attempts: int = 5
+    login_lockout_minutes: int = 15
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

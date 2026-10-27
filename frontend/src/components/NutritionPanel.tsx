@@ -30,17 +30,52 @@ function FactsRow({ label, facts }: { label: string; facts: NutritionFacts }) {
 }
 
 export function NutritionPanel({ recipeId }: { recipeId: number }) {
+  const [requested, setRequested] = useState(false);
   const [goalInput, setGoalInput] = useState('');
   const [goal, setGoal] = useState<number | null>(null);
-  const nutrition = useRecipeNutrition(recipeId, goal);
+  const [goalError, setGoalError] = useState<string | null>(null);
+  const nutrition = useRecipeNutrition(recipeId, requested);
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     const value = Number(goalInput);
-    setGoal(goalInput && value >= MIN_GOAL && value <= MAX_GOAL ? Math.round(value) : null);
+    if (!goalInput) {
+      setGoal(null);
+      setGoalError(null);
+      return;
+    }
+    if (value < MIN_GOAL || value > MAX_GOAL) {
+      setGoalError(`Введіть від ${MIN_GOAL} до ${MAX_GOAL} ккал`);
+      return;
+    }
+    setGoalError(null);
+    setGoal(Math.round(value));
   };
 
   const data = nutrition.data;
+  // The goal comparison is a division; no reason to ask the server again for it.
+  const goalPercent =
+    data && goal && data.counted_ingredients > 0
+      ? Math.round((data.per_serving.kcal / goal) * 1000) / 10
+      : null;
+
+  if (!requested) {
+    return (
+      <section className="border-cream-200 border-t px-6 py-6 sm:px-8">
+        <h3 className="font-display text-xl font-bold">КБЖВ</h3>
+        <p className="mt-2 text-sm text-olive-800">
+          Калорійність і БЖВ рахуємо за картками товарів Сільпо, тому це окремий крок.
+        </p>
+        <button
+          type="button"
+          onClick={() => setRequested(true)}
+          className="text-cream-50 focus:ring-accent-500 mt-3 min-h-10 rounded-xl bg-olive-800 px-4 font-semibold transition hover:bg-olive-900 focus:ring-2 focus:outline-none"
+        >
+          Порахувати КБЖВ
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -60,7 +95,7 @@ export function NutritionPanel({ recipeId }: { recipeId: number }) {
             inputMode="numeric"
             min={MIN_GOAL}
             max={MAX_GOAL}
-            step={50}
+            step={1}
             value={goalInput}
             onChange={(e) => setGoalInput(e.target.value)}
             placeholder="2000"
@@ -80,6 +115,11 @@ export function NutritionPanel({ recipeId }: { recipeId: number }) {
           Рахуємо КБЖВ за даними Сільпо…
         </p>
       ) : null}
+      {goalError ? (
+        <p role="alert" className="text-accent-600 mt-2 text-sm font-medium">
+          {goalError}
+        </p>
+      ) : null}
       {nutrition.isError ? (
         <p role="alert" className="text-accent-600 mt-4 text-sm font-medium">
           {nutrition.error.message}
@@ -94,11 +134,10 @@ export function NutritionPanel({ recipeId }: { recipeId: number }) {
               вдалося.
             </p>
           ) : null}
-          {data.counted_ingredients > 0 && data.goal ? (
+          {goalPercent !== null ? (
             <p className="rounded-xl bg-olive-100 px-4 py-3 text-sm text-olive-900">
-              Одна порція —{' '}
-              <span className="font-semibold">{fmt(data.goal.per_serving_percent)}%</span> від
-              денної норми {data.goal.daily_kcal} ккал
+              Одна порція — <span className="font-semibold">{fmt(goalPercent)}%</span> від денної
+              норми {goal} ккал
             </p>
           ) : null}
 
@@ -136,8 +175,8 @@ export function NutritionPanel({ recipeId }: { recipeId: number }) {
               Сільпо)
             </summary>
             <ul className="divide-cream-200 mt-2 divide-y">
-              {data.ingredients.map((i) => (
-                <li key={i.name} className="flex justify-between gap-3 py-1.5">
+              {data.ingredients.map((i, idx) => (
+                <li key={`${i.name}-${idx}`} className="flex justify-between gap-3 py-1.5">
                   <span>
                     {i.name}
                     {i.product_name ? (

@@ -4,7 +4,7 @@ import pytest
 
 from app.core.errors import NutritionUnavailableError
 from app.schemas.nutrition import NutritionFacts
-from app.schemas.recipes import Ingredient
+from app.schemas.recipes import IngredientRead
 from app.services.nutrition import (
     ProductNutrition,
     SilpoNutritionProvider,
@@ -70,7 +70,7 @@ def test_weighted_product_has_no_package_weight() -> None:
 def test_ingredient_grams(
     quantity: float | None, unit: str, package: float | None, expected: float | None
 ) -> None:
-    ingredient = Ingredient(name="x", quantity=quantity, unit=unit, have_at_home=True)
+    ingredient = IngredientRead(name="x", quantity=quantity, unit=unit, have_at_home=True)
     assert ingredient_grams(ingredient, package) == expected
 
 

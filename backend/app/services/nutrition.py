@@ -4,19 +4,22 @@ Only Silpo data is counted: an ingredient without a matching product, without nu
 attributes or with a quantity that cannot be converted to grams is reported but left out of
 the totals. The response says how many ingredients were counted, so the UI can be honest.
 
-The Silpo MCP client (`mcp-silpo/silpo_client.py`, PR #23) is not part of the backend yet.
-`SilpoNutritionProvider` depends only on the `SilpoSession` protocol, which `SilpoClient`
-already satisfies, so wiring the real client is a change in `get_nutrition_provider` only.
+The Silpo MCP client lives in `app.integrations.silpo`. `SilpoNutritionProvider` depends only on
+the `SilpoSession` protocol (which `SilpoClient` satisfies) so it can be tested with a fake.
 """
 
 import logging
 import re
+
+import httpx
 from dataclasses import dataclass
 from typing import Annotated, Any, Protocol
 
 from fastapi import Depends
+from mcp.shared.exceptions import McpError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.core.errors import NutritionUnavailableError
 from app.schemas.nutrition import (
     GoalComparison,
@@ -25,7 +28,8 @@ from app.schemas.nutrition import (
     NutritionFacts,
     RecipeNutrition,
 )
-from app.schemas.recipes import Ingredient, RecipeContent
+from app.integrations.silpo import SilpoError, connect
+from app.schemas.recipes import IngredientRead, RecipeRead
 from app.services.recipes import get_recipe
 
 logger = logging.getLogger(__name__)
@@ -119,7 +123,7 @@ def parse_package_grams(display_ratio: str | None, *, weighted: bool) -> float |
     return amount * UNIT_GRAMS[m.group(2).lower()]
 
 
-def ingredient_grams(ingredient: Ingredient, package_grams: float | None) -> float | None:
+def ingredient_grams(ingredient: IngredientRead, package_grams: float | None) -> float | None:
     if ingredient.quantity is None:
         return None
     unit = ingredient.unit.strip().lower()
@@ -177,7 +181,7 @@ def _ingredient_nutrition(
 
 def calculate(
     recipe_id: int,
-    content: RecipeContent,
+    content: RecipeRead,
     products: dict[str, ProductNutrition | None],
     daily_kcal_goal: int | None,
 ) -> RecipeNutrition:
@@ -209,7 +213,7 @@ async def recipe_nutrition(
     db: AsyncSession, provider: NutritionProvider, recipe_id: int, daily_kcal_goal: int | None
 ) -> RecipeNutrition:
     recipe = await get_recipe(db, recipe_id)
-    content = RecipeContent.model_validate(recipe.content)
+    content = RecipeRead.from_model(recipe)
     names = list(dict.fromkeys(i.name for i in content.ingredients if i.quantity is not None))
     products = await provider.lookup(names) if names else {}
     result = calculate(recipe_id, content, products, daily_kcal_goal)
@@ -238,7 +242,7 @@ class SilpoNutritionProvider:
                 product = next((p for p in found.get(name, []) if p.get("available")), None)
                 result[name] = await self._details(product, ctx) if product else None
             return result
-        except Exception as exc:  # noqa: BLE001 - SilpoError lives outside the backend for now
+        except (SilpoError, McpError, httpx.HTTPError, TimeoutError, OSError) as exc:
             logger.warning("silpo nutrition lookup failed: %s: %s", type(exc).__name__, exc)
             raise NutritionUnavailableError() from exc
 
@@ -254,10 +258,27 @@ class SilpoNutritionProvider:
         )
 
 
-def get_nutrition_provider() -> NutritionProvider:
-    # The Silpo MCP client is not in the backend yet (PR #23). Until it is, the endpoint
-    # answers 503 and the recipe itself keeps working.
-    raise NutritionUnavailableError("Розрахунок КБЖВ ще не підключено до Сільпо")
+class ConnectedSilpoProvider:
+    """Opens one MCP session per lookup. A localhost URL is the mock (no OAuth); the real server
+    needs a logged-in token file, which only exists on a developer machine for now."""
+
+    def __init__(self, url: str) -> None:
+        self._url = url
+
+    async def lookup(self, names: list[str]) -> dict[str, ProductNutrition | None]:
+        try:
+            async with connect(self._url) as silpo:
+                return await SilpoNutritionProvider(silpo).lookup(names)
+        except (SilpoError, McpError, httpx.HTTPError, TimeoutError, OSError) as exc:
+            logger.warning("silpo connect failed: %s: %s", type(exc).__name__, exc)
+            raise NutritionUnavailableError() from exc
+
+
+def get_nutrition_provider(settings: Annotated[Settings, Depends(get_settings)]) -> NutritionProvider:
+    # Without SILPO_MCP_URL the endpoint answers 503 and the recipe itself keeps working.
+    if not settings.silpo_mcp_url:
+        raise NutritionUnavailableError("Розрахунок КБЖВ не налаштовано (немає SILPO_MCP_URL)")
+    return ConnectedSilpoProvider(settings.silpo_mcp_url)
 
 
 NutritionDep = Annotated[NutritionProvider, Depends(get_nutrition_provider)]

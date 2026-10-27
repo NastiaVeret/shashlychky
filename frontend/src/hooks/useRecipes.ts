@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createRecipe,
+  getMyRecipes,
   getRecipe,
   getRecipeNutrition,
   nutritionKeys,
@@ -11,7 +12,10 @@ export function useCreateRecipe() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createRecipe,
-    onSuccess: (recipe) => qc.setQueryData(recipeKeys.detail(recipe.id), recipe),
+    onSuccess: (recipe) => {
+      qc.setQueryData(recipeKeys.detail(recipe.id), recipe);
+      void qc.invalidateQueries({ queryKey: recipeKeys.mine });
+    },
   });
 }
 
@@ -24,12 +28,22 @@ export function useRecipe(id: number) {
   });
 }
 
-export function useRecipeNutrition(id: number, dailyKcalGoal: number | null) {
+/** Pass `enabled = !!user`: the endpoint requires a session. */
+export function useMyRecipes(enabled: boolean) {
   return useQuery({
-    queryKey: nutritionKeys.detail(id, dailyKcalGoal),
-    queryFn: ({ signal }) => getRecipeNutrition(id, dailyKcalGoal, signal),
+    queryKey: recipeKeys.mine,
+    queryFn: ({ signal }) => getMyRecipes({ limit: 50, offset: 0 }, signal),
+    enabled,
+  });
+}
+
+/** Fetched only after the user asks for it: КБЖВ is a second step, not part of every recipe view. */
+export function useRecipeNutrition(id: number, enabled: boolean) {
+  return useQuery({
+    queryKey: nutritionKeys.detail(id),
+    queryFn: ({ signal }) => getRecipeNutrition(id, signal),
     staleTime: 5 * 60 * 1000, // Silpo product data changes rarely
-    retry: 1, // 503 when Silpo is unavailable: show it quickly instead of retrying 3 times
-    enabled: Number.isFinite(id) && id > 0,
+    retry: false, // 503 when Silpo is not configured or down: say so, do not hammer it
+    enabled: enabled && Number.isFinite(id) && id > 0,
   });
 }

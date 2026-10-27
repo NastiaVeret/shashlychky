@@ -14,6 +14,8 @@ dependencies = [
     "psycopg[binary,pool]>=3.2",
     "alembic>=1.14",
     "google-genai>=1.30",
+    "argon2-cffi>=23.1",
+    "mcp>=1.30,<2",
 ]
 
 [dependency-groups]
@@ -34,6 +36,11 @@ select = ["E", "F", "I", "B", "UP", "N", "W"]
 [tool.ruff.lint.per-file-ignores]
 # empty migrations keep the standard op/sa imports for convenience
 "alembic/versions/*" = ["F401"]
+# Silpo integration was written outside the backend conventions; MCP tool parameters must be
+# camelCase to match the real server's schema. Tidy up gradually, do not add new exceptions.
+"app/integrations/silpo/*" = ["E501", "E741"]
+"tests/silpo_mock/*" = ["E501", "N803", "E741"]
+"tests/integrations/*" = ["E501", "E741"]
 
 [tool.ruff.lint.isort]
 # the local alembic/ folder must not shadow the alembic package when sorting imports
@@ -47,3 +54,12 @@ testpaths = ["tests"]
 python_version = "3.13"
 strict = true
 plugins = ["pydantic.mypy"]
+
+# The Silpo client arrived untyped (dict payloads from the MCP server). Checked, but not strict yet.
+[[tool.mypy.overrides]]
+module = "app.integrations.silpo.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_any_generics = false
+warn_return_any = false
+disallow_untyped_calls = false
