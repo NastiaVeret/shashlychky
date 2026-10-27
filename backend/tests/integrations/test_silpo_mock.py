@@ -2,6 +2,7 @@ import json
 
 import pytest
 from mcp.shared.memory import create_connected_server_and_client_session
+from mcp.types import TextContent
 
 from tests.silpo_mock import server as mock_server
 
@@ -155,7 +156,7 @@ async def test_add_products_verified_ok_even_with_stale_slot():
 
 class _FakeResult:
     def __init__(self, text, is_error=False):
-        self.content = [type("C", (), {"text": text})()]
+        self.content = [TextContent(type="text", text=text)]
         self.isError = is_error
 
 
