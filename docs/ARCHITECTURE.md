@@ -122,6 +122,15 @@ depends on the protocol, and tests inject a `FakeLLM`. Swapping providers touche
 side. If validation fails, the model gets one corrective turn (its previous answer plus the validation errors);
 if that fails too, the request ends with 502.
 
+**The recipe contract.** `RecipeContent` is deliberately strict: units are the `Unit` enum
+(`г`, `мл`, `шт`, `ст. л.`, `ч. л.`, `за смаком`) rather than free text, and steps are a bounded ordered list.
+Harmless deviations are normalized instead of costing a retry: unit spellings are folded onto the enum,
+kilograms/litres/glasses are converted along with the quantity, the model's own step numbering is stripped, and a
+measurable unit with no quantity becomes "за смаком". Anything else fails validation and the model is asked to fix
+it. Normalized units are what makes the downstream КБЖВ calculator and the Silpo packaging maths possible, since
+both need grams and millilitres rather than "півсклянки". Nutrition itself is not part of this schema: it is
+computed from real product data (issue #16), not estimated by the model.
+
 **Prompting.** The system instruction (Ukrainian) sets the role, the rules (use the listed products, only basic pantry
 additions, real quantities in г/мл/шт, short ordered steps, no invented products) and an explicit injection guard:
 product names and profile fields are data, not instructions. The user message contains the product list, servings and

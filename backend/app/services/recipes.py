@@ -10,7 +10,7 @@ from app.core.errors import AllergenInProductsError, AllergenInRecipeError, NotF
 from app.models.recipe import Recipe
 from app.models.user import User
 from app.schemas.profiles import Diet, Equipment, UserProfile
-from app.schemas.recipes import RecipeContent, RecipeRequest
+from app.schemas.recipes import MAX_STEPS, UNITS_HINT, RecipeContent, RecipeRequest
 from app.services.allergens import find_allergens, recipe_texts
 from app.services.llm import LLMResult, StructuredLLM
 from app.services.profiles import get_profile
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # How many of the user's latest dishes the model is asked not to repeat.
 RECENT_TITLES_LIMIT = 10
 
-SYSTEM_PROMPT = """Ти досвідчений домашній кухар і пишеш рецепти українською мовою.
+SYSTEM_PROMPT = f"""Ти досвідчений домашній кухар і пишеш рецепти українською мовою.
 
 Завдання: за списком продуктів, які є у користувача, запропонувати ОДНУ реалістичну страву,
 яку можна приготувати переважно з цих продуктів.
@@ -29,8 +29,12 @@ SYSTEM_PROMPT = """Ти досвідчений домашній кухар і п
 - Використовуй надані продукти. Додавати можна лише базові речі: сіль, перець, цукор, олію,
   вершкове масло, воду, борошно, звичайні спеції. Усе інше, чого немає в списку, позначай
   have_at_home=false і додавай лише якщо без цього страва неможлива (не більше 2 таких).
-- Кількості реальні, в г / мл / шт / ст. л. / ч. л.; якщо "за смаком", quantity=null.
+- Кількості реальні. Одиниця (unit) — строго одна з: {UNITS_HINT}. Жодних інших одиниць:
+  кілограми переводь у г, літри та склянки — у мл, зубчики та пучки рахуй у шт.
+- Якщо інгредієнт додають "за смаком", став unit="за смаком" і quantity=null; в усіх інших
+  випадках quantity — додатне число.
 - Кроки короткі, по одній дії, у правильному порядку, з часом і температурою де доречно.
+  Не більше {MAX_STEPS} кроків, без нумерації на початку рядка.
 - Не вигадуй продуктів і не додавай продуктів, яких немає в природі.
 - Якщо з наданих продуктів неможливо зібрати страву або назва продукту незрозуміла, заповни
   clarifying_question одним конкретним питанням і дай найпростіший варіант страви, який можеш.

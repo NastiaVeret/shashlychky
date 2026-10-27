@@ -3,7 +3,6 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import CurrentUser, SettingsDep, clear_session_cookie
-from app.api.v1.recipes import to_read
 from app.db.session import DbSession
 from app.schemas.auth import UserRead
 from app.schemas.profiles import UserProfile
@@ -42,7 +41,7 @@ async def list_my_recipes(
     """The user's recipes, newest first."""
     response.headers["Cache-Control"] = "no-store"
     recipes = await recipes_service.list_user_recipes(db, user.id, limit, offset)
-    return [to_read(r) for r in recipes]
+    return [RecipeRead.from_model(r) for r in recipes]
 
 
 @router.get("/profile", response_model=UserProfile)

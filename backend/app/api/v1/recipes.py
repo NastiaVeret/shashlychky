@@ -2,22 +2,11 @@ from fastapi import APIRouter, status
 
 from app.api.deps import OptionalUser
 from app.db.session import DbSession
-from app.models.recipe import Recipe
-from app.schemas.recipes import RecipeContent, RecipeRead, RecipeRequest
+from app.schemas.recipes import RecipeRead, RecipeRequest
 from app.services import recipes as service
 from app.services.llm import LLMDep
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
-
-
-def to_read(recipe: Recipe) -> RecipeRead:
-    content = RecipeContent.model_validate(recipe.content)
-    return RecipeRead(
-        id=recipe.id,
-        products=recipe.products,
-        created_at=recipe.created_at,
-        **content.model_dump(),
-    )
 
 
 @router.post("", response_model=RecipeRead, status_code=status.HTTP_201_CREATED)
@@ -28,9 +17,9 @@ async def create_recipe(
     recipe = await service.generate_recipe(db, llm, req, user)
     await db.commit()
     await db.refresh(recipe)
-    return to_read(recipe)
+    return RecipeRead.from_model(recipe)
 
 
 @router.get("/{recipe_id}", response_model=RecipeRead)
 async def read_recipe(recipe_id: int, db: DbSession) -> RecipeRead:
-    return to_read(await service.get_recipe(db, recipe_id))
+    return RecipeRead.from_model(await service.get_recipe(db, recipe_id))
