@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Cookie, Depends, Response
 
 from app.core.config import Settings, get_settings
-from app.core.errors import NotAuthenticatedError
+from app.core.errors import NotAuthenticatedError, SessionExpiredError
 from app.db.session import DbSession
 from app.models.user import User
 from app.services import auth as auth_service
@@ -18,8 +18,25 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 SessionToken = Annotated[str | None, Cookie(alias=SESSION_COOKIE)]
 
 
-async def get_current_user(db: DbSession, token: SessionToken = None) -> User:
-    user = await auth_service.get_user_by_token(db, token) if token else None
+async def get_optional_user(db: DbSession, token: SessionToken = None) -> User | None:
+    """The logged-in user, or None for anonymous requests.
+
+    A cookie that is present but no longer valid is a 401, not an anonymous request: silently
+    degrading would drop the user's allergen guard without anyone noticing. The error handler
+    clears the stale cookie so the next request is truly anonymous.
+    """
+    if token is None:
+        return None
+    user = await auth_service.get_user_by_token(db, token)
+    if user is None:
+        raise SessionExpiredError()
+    return user
+
+
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+
+
+async def get_current_user(user: OptionalUser) -> User:
     if user is None:
         raise NotAuthenticatedError()
     return user

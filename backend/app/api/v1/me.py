@@ -1,10 +1,15 @@
-from fastapi import APIRouter, Response, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import CurrentUser, SettingsDep, clear_session_cookie
+from app.api.v1.recipes import to_read
 from app.db.session import DbSession
 from app.schemas.auth import UserRead
 from app.schemas.profiles import UserProfile
+from app.schemas.recipes import RecipeRead
 from app.services import profiles as service
+from app.services import recipes as recipes_service
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -24,6 +29,20 @@ async def delete_me(
     await service.delete_user(db, user)
     await db.commit()
     clear_session_cookie(response, settings)
+
+
+@router.get("/recipes", response_model=list[RecipeRead])
+async def list_my_recipes(
+    user: CurrentUser,
+    response: Response,
+    db: DbSession,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[RecipeRead]:
+    """The user's recipes, newest first."""
+    response.headers["Cache-Control"] = "no-store"
+    recipes = await recipes_service.list_user_recipes(db, user.id, limit, offset)
+    return [to_read(r) for r in recipes]
 
 
 @router.get("/profile", response_model=UserProfile)

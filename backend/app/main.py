@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1 import router as api_v1_router
 from app.core.config import get_settings
-from app.core.errors import AppError
+from app.core.errors import AppError, SessionExpiredError
 from app.db.session import get_engine
 
 
@@ -22,7 +22,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 async def app_error_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    if isinstance(exc, SessionExpiredError):
+        # Imported here to keep app.main free of router-level dependencies at import time.
+        from app.api.deps import clear_session_cookie
+
+        clear_session_cookie(response, get_settings())
+    return response
 
 
 def create_app() -> FastAPI:
