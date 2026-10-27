@@ -10,17 +10,17 @@ the `SilpoSession` protocol (which `SilpoClient` satisfies) so it can be tested 
 
 import logging
 import re
-
-import httpx
 from dataclasses import dataclass
 from typing import Annotated, Any, Protocol
 
+import httpx
 from fastapi import Depends
 from mcp.shared.exceptions import McpError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import NutritionUnavailableError
+from app.integrations.silpo import SilpoError, connect
 from app.schemas.nutrition import (
     GoalComparison,
     IngredientNutrition,
@@ -28,7 +28,6 @@ from app.schemas.nutrition import (
     NutritionFacts,
     RecipeNutrition,
 )
-from app.integrations.silpo import SilpoError, connect
 from app.schemas.recipes import IngredientRead, RecipeRead
 from app.services.recipes import get_recipe
 
@@ -153,7 +152,7 @@ def _sum(items: list[NutritionFacts]) -> NutritionFacts:
 
 
 def _ingredient_nutrition(
-    ingredient: Ingredient, found: ProductNutrition | None
+    ingredient: IngredientRead, found: ProductNutrition | None
 ) -> IngredientNutrition:
     def result(
         status: IngredientStatus, grams: float | None = None, total: NutritionFacts | None = None
@@ -274,10 +273,14 @@ class ConnectedSilpoProvider:
             raise NutritionUnavailableError() from exc
 
 
-def get_nutrition_provider(settings: Annotated[Settings, Depends(get_settings)]) -> NutritionProvider:
+def get_nutrition_provider(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> NutritionProvider:
     # Without SILPO_MCP_URL the endpoint answers 503 and the recipe itself keeps working.
     if not settings.silpo_mcp_url:
-        raise NutritionUnavailableError("Розрахунок КБЖВ не налаштовано (немає SILPO_MCP_URL)")
+        raise NutritionUnavailableError(
+            "Розрахунок КБЖВ не підключено до Сільпо (немає SILPO_MCP_URL)"
+        )
     return ConnectedSilpoProvider(settings.silpo_mcp_url)
 
 

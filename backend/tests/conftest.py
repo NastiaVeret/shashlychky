@@ -9,7 +9,7 @@ from app.core.errors import LLMUnavailableError
 from app.db.session import get_engine
 from app.main import app
 from app.schemas.nutrition import NutritionFacts
-from app.schemas.recipes import Ingredient, RecipeContent
+from app.schemas.recipes import Ingredient, RecipeContent, Unit
 from app.services.llm import LLMResult, get_llm
 from app.services.nutrition import ProductNutrition, get_nutrition_provider
 
@@ -19,9 +19,9 @@ SAMPLE_RECIPE = RecipeContent(
     cooking_time_minutes=10,
     servings=2,
     ingredients=[
-        Ingredient(name="Яйця", quantity=4, unit="шт", have_at_home=True),
-        Ingredient(name="Помідор", quantity=1, unit="шт", have_at_home=True),
-        Ingredient(name="Сіль", quantity=None, unit="за смаком", have_at_home=True),
+        Ingredient(name="Яйця", quantity=4, unit=Unit.PIECE, have_at_home=True),
+        Ingredient(name="Помідор", quantity=1, unit=Unit.PIECE, have_at_home=True),
+        Ingredient(name="Сіль", quantity=None, unit=Unit.TO_TASTE, have_at_home=True),
     ],
     steps=["Збити яйця з сіллю.", "Нарізати помідор.", "Смажити 5 хвилин під кришкою."],
     tips=None,

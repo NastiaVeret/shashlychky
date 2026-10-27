@@ -15,8 +15,14 @@ Full engineering overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 The user lists the products they have at home; the backend asks Gemini (`gemini-3.1-flash-lite`, the cheapest
 model) for one realistic dish as structured JSON (title, ingredients with quantities and "have at home / to buy"
-markers, steps, optional clarifying question), validates it, stores it in Postgres and the React UI renders the
-recipe card. Each recipe gets a shareable URL `/recipes/<id>`.
+markers, step-by-step method, optional clarifying question), validates it, stores it in Postgres and the React UI
+renders the recipe card. Each recipe gets a shareable URL `/recipes/<id>`.
+
+The response contract (`backend/app/schemas/recipes.py`) is strict on purpose: units are an enum
+(`г`, `мл`, `шт`, `ст. л.`, `ч. л.`, `за смаком`) instead of free text, so everything downstream gets grams and
+millilitres instead of "півсклянки". Near misses are normalized rather than retried — unit spellings are folded
+onto the enum, kilograms, litres and glasses are converted along with the quantity, and the model's own step
+numbering is stripped.
 
 LLM practices in `backend/app/services/llm.py`: system prompt separated from user data (products are data, not
 instructions), provider-enforced JSON schema + Pydantic validation, one corrective retry on invalid output, SDK

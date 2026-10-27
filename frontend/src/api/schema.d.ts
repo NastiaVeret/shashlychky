@@ -253,30 +253,6 @@ export interface components {
             /** Version */
             version: string;
         };
-        /** Ingredient */
-        Ingredient: {
-            /**
-             * Name
-             * @description Назва інгредієнта українською
-             */
-            name: string;
-            /**
-             * Quantity
-             * @description Кількість; null, якщо 'за смаком'
-             */
-            quantity?: number | null;
-            /**
-             * Unit
-             * @description Одиниця: г, мл, шт, ст. л., ч. л. або 'за смаком'
-             */
-            unit: string;
-            /**
-             * Have At Home
-             * @description true, якщо інгредієнт є серед продуктів користувача або базовий (сіль, вода, олія)
-             */
-            have_at_home: boolean;
-        };
-<<<<<<< HEAD
         /** IngredientNutrition */
         IngredientNutrition: {
             /** Name */
@@ -298,6 +274,31 @@ export interface components {
             product_name: string | null;
             per_100g: components["schemas"]["NutritionFacts"] | null;
             total: components["schemas"]["NutritionFacts"] | null;
+        };
+        /**
+         * IngredientRead
+         * @description An ingredient as stored. `unit` is free text here: rows written before the `Unit` enum
+         *     existed keep whatever the model said back then ("зубчики", "пучок") and must stay readable.
+         */
+        IngredientRead: {
+            /** Name */
+            name: string;
+            /** Quantity */
+            quantity?: number | null;
+            /** Unit */
+            unit: string;
+            /**
+             * Have At Home
+             * @default true
+             */
+            have_at_home: boolean;
+        };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
         };
         /** NutritionFacts */
         NutritionFacts: {
@@ -328,48 +329,14 @@ export interface components {
             /** Ingredients */
             ingredients: components["schemas"]["IngredientNutrition"][];
             goal: components["schemas"]["GoalComparison"] | null;
-=======
-        /** LoginRequest */
-        LoginRequest: {
-            /** Email */
-            email: string;
-            /** Password */
-            password: string;
->>>>>>> origin/feature/mcp-silpo
         };
-        /** RecipeRead */
+        /**
+         * RecipeRead
+         * @description API response for a stored recipe. Deliberately lenient: the strict bounds in
+         *     `RecipeContent` are the contract for *generation*; a recipe that was valid when it was
+         *     saved must never turn into a 500 because the contract got stricter later.
+         */
         RecipeRead: {
-            /**
-             * Title
-             * @description Назва страви
-             */
-            title: string;
-            /**
-             * Description
-             * @description 1-2 речення про страву
-             */
-            description: string;
-            /** Cooking Time Minutes */
-            cooking_time_minutes: number;
-            /** Servings */
-            servings: number;
-            /** Ingredients */
-            ingredients: components["schemas"]["Ingredient"][];
-            /**
-             * Steps
-             * @description Кроки приготування по порядку
-             */
-            steps: string[];
-            /**
-             * Tips
-             * @description Коротка порада або варіант заміни
-             */
-            tips?: string | null;
-            /**
-             * Clarifying Question
-             * @description Якщо з наданих продуктів неможливо зібрати страву або продукт незрозумілий, постав тут одне уточнювальне питання; інакше null
-             */
-            clarifying_question?: string | null;
             /** Id */
             id: number;
             /** Products */
@@ -379,6 +346,22 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Cooking Time Minutes */
+            cooking_time_minutes: number;
+            /** Servings */
+            servings: number;
+            /** Ingredients */
+            ingredients: components["schemas"]["IngredientRead"][];
+            /** Steps */
+            steps: string[];
+            /** Tips */
+            tips?: string | null;
+            /** Clarifying Question */
+            clarifying_question?: string | null;
         };
         /** RecipeRequest */
         RecipeRequest: {

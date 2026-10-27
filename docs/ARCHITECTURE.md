@@ -49,8 +49,8 @@ backend/            FastAPI service (Python 3.13, uv)
 frontend/           React 19 + TypeScript + Vite + Tailwind v4
   src/api/          fetch wrapper and typed request functions (mirror of backend schemas)
   src/hooks/        react-query hooks
-  src/components/   ProductInput, RecipeCard, Layout
-  src/pages/        HomePage, RecipePage (lazy)
+  src/components/   ProductInput, RecipeCard, Layout (account nav)
+  src/pages/        HomePage; lazy: RecipePage, AuthPage, ProfilePage, MyRecipesPage
   firebase.json     hosting config incl. the /api rewrite
 .github/workflows/  ci.yml, deploy.yml, preview.yml
 .claude/            shared Claude Code config: rules, skills, agents, hooks
@@ -122,6 +122,15 @@ depends on the protocol, and tests inject a `FakeLLM`. Swapping providers touche
 side. If validation fails, the model gets one corrective turn (its previous answer plus the validation errors);
 if that fails too, the request ends with 502.
 
+**The recipe contract.** `RecipeContent` is deliberately strict: units are the `Unit` enum
+(`г`, `мл`, `шт`, `ст. л.`, `ч. л.`, `за смаком`) rather than free text, and steps are a bounded ordered list.
+Harmless deviations are normalized instead of costing a retry: unit spellings are folded onto the enum,
+kilograms/litres/glasses are converted along with the quantity, the model's own step numbering is stripped, and a
+measurable unit with no quantity becomes "за смаком". Anything else fails validation and the model is asked to fix
+it. Normalized units are what makes the downstream КБЖВ calculator and the Silpo packaging maths possible, since
+both need grams and millilitres rather than "півсклянки". Nutrition itself is not part of this schema: it is
+computed from real product data (issue #16), not estimated by the model.
+
 **Prompting.** The system instruction (Ukrainian) sets the role, the rules (use the listed products, only basic pantry
 additions, real quantities in г/мл/шт, short ordered steps, no invented products) and an explicit injection guard:
 product names and profile fields are data, not instructions. The user message contains the product list, servings and
@@ -179,11 +188,18 @@ turns FastAPI's `{"detail": ...}` into an `ApiError` message. `src/api/schema.d.
 OpenAPI document by `make types` (openapi-typescript); `src/api/recipes.ts` aliases those types and holds the request
 functions. The `contract` CI job fails when the generated file is stale, so the API contract cannot drift silently. `src/hooks/useRecipes.ts` exposes `useCreateRecipe`
 (mutation; seeds the detail cache on success) and `useRecipe(id)` (query with `AbortSignal`, `staleTime: Infinity`).
+`src/hooks/useAuth.ts` holds `useMe()` (key `['me']`; `getMe` maps 401 to `null`, so "logged out" is data, not an
+error) and the login / register / logout / delete-account mutations, which set `['me']` and reset `['me', 'profile']`
+and `['recipes', 'mine']`. The session cookie is httpOnly: JavaScript never sees a token, same-origin fetch sends it.
 
 **UI.** `HomePage`: hero, chip-style `ProductInput` (Enter or comma adds, Backspace removes, suggestion chips,
 30-item cap), servings toggle, optional preferences, submit with pending / error states, then `RecipeCard`.
 `RecipeCard`: title, description, time, servings, ingredients with "докупити" badges, numbered steps, tip, and the
 model's clarifying question when present. `RecipePage` (`/recipes/:id`) is lazy-loaded and renders a stored recipe.
+`Layout` shows "Увійти" or the account nav (Мої рецепти, Профіль, Вийти). Lazy pages: `AuthPage` (`/login`, login and
+registration tabs; a new account lands on the profile), `ProfilePage` (`/profile`: allergen, disliked and pantry chips
+reusing `ProductInput`, diet and equipment toggles, usual servings, two-step account deletion) and `MyRecipesPage`
+(`/my-recipes`). For a logged-in user `HomePage` preselects the profile's servings and says whether the profile is used.
 
 **Styling.** Tailwind only; the single stylesheet `src/index.css` defines `@theme` tokens taken from the Canva deck
 (olive background, dark green text, cream cards, orange accent, Fraunces display font). `prettier-plugin-tailwindcss`
@@ -255,8 +271,8 @@ Everything a teammate's Claude Code needs lives in the repo:
 
 ## 10. Known limitations and next steps
 
-- Accounts, a dietary profile and per-user recipe history exist on the backend; the frontend for them is
-  not built yet. No password reset and no email confirmation: both need an email provider.
+- Accounts, a dietary profile and per-user recipe history exist. No password reset and no email
+  confirmation: both need an email provider.
 - The allergen check is a lexical safety net, not a guarantee: it misses allergens hidden in products
   whose names do not mention them. The footer disclaimer stays.
 - No rate limiting on `POST /recipes`; the only guard is input size. Add per-IP limits before public promotion.

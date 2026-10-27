@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 
 from app.core.errors import NutritionUnavailableError
+from app.integrations.silpo import SilpoError
 from app.schemas.nutrition import NutritionFacts
 from app.schemas.recipes import IngredientRead
 from app.services.nutrition import (
@@ -123,7 +124,7 @@ class FakeSilpo:
 
     async def find_products(self, names: list[str], limit: int = 3) -> dict[str, list[Any]]:
         if self.fail:
-            raise RuntimeError("silpo down")
+            raise SilpoError("silpo_find_products_batch", "silpo down")
         catalogue = {
             "Молоко": [
                 {"name": "Молоко (немає)", "slug": "gone", "available": False},
