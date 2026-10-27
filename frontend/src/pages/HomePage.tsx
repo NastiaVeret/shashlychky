@@ -52,6 +52,10 @@ export function HomePage() {
   const profile = useProfile(!!me.data);
   const create = useCreateRecipe();
   const servings = pickedServings ?? profile.data?.default_servings ?? 2;
+  // The API allows 1-12; if the profile holds a value we do not offer, show it as an extra option.
+  const servingOptions: number[] = (SERVINGS as readonly number[]).includes(servings)
+    ? [...SERVINGS]
+    : [...SERVINGS, servings].sort((a, b) => a - b);
 
   const canSubmit = products.length > 0 && !create.isPending;
 
@@ -86,7 +90,7 @@ export function HomePage() {
           <fieldset>
             <legend className="mb-2 text-sm font-semibold text-olive-800">Порцій</legend>
             <div className="flex gap-2">
-              {SERVINGS.map((n) => (
+              {servingOptions.map((n) => (
                 <button
                   key={n}
                   type="button"

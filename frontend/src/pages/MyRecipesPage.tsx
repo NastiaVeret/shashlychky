@@ -9,6 +9,14 @@ export function MyRecipesPage() {
   const recipes = useMyRecipes(!!me.data);
 
   if (me.isPending) return null;
+  // A failed /me is not "logged out": do not bounce a user with a valid cookie to /login.
+  if (me.isError) {
+    return (
+      <p role="alert" className="rounded-card bg-cream-50 text-accent-600 mt-8 p-6 font-medium">
+        {me.error.message}
+      </p>
+    );
+  }
   if (!me.data) return <Navigate to="/login" replace />;
 
   return (

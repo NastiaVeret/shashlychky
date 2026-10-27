@@ -27,7 +27,7 @@ const EQUIPMENT: { value: Equipment; label: string }[] = [
 const SERVINGS = [1, 2, 4, 6] as const;
 
 const TOGGLE =
-  'bg-cream-50 focus:ring-accent-500 aria-pressed:text-cream-50 min-h-10 rounded-full border-2 border-olive-200 px-4 text-sm font-semibold transition hover:border-olive-400 focus:ring-2 focus:outline-none aria-pressed:border-olive-800 aria-pressed:bg-olive-800';
+  'bg-cream-50 focus:ring-accent-500 aria-pressed:text-cream-50 min-h-10 rounded-full border-2 border-olive-200 px-4 text-sm font-semibold transition hover:border-olive-400 focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 aria-pressed:border-olive-800 aria-pressed:bg-olive-800';
 const SECTION = 'rounded-card bg-cream-100 shadow-card space-y-6 p-5 sm:p-8';
 
 function toggled<T>(list: T[], value: T): T[] {
@@ -76,6 +76,7 @@ function ProfileForm({ initial }: { initial: UserProfile }) {
               type="button"
               aria-pressed={draft.diets?.includes(d.value) ?? false}
               onClick={() => change({ diets: toggled(draft.diets ?? [], d.value) })}
+              disabled={update.isPending}
               className={TOGGLE}
             >
               {d.label}
@@ -104,6 +105,7 @@ function ProfileForm({ initial }: { initial: UserProfile }) {
               type="button"
               aria-pressed={draft.equipment?.includes(eq.value) ?? false}
               onClick={() => change({ equipment: toggled(draft.equipment ?? [], eq.value) })}
+              disabled={update.isPending}
               className={TOGGLE}
             >
               {eq.label}
@@ -124,6 +126,7 @@ function ProfileForm({ initial }: { initial: UserProfile }) {
               type="button"
               aria-pressed={(draft.default_servings ?? 2) === n}
               onClick={() => change({ default_servings: n })}
+              disabled={update.isPending}
               className={`${TOGGLE} flex-1`}
             >
               {n}
@@ -199,7 +202,7 @@ function DeleteAccount() {
             type="button"
             onClick={() => setConfirming(false)}
             disabled={remove.isPending}
-            className="focus:ring-accent-500 min-h-10 rounded-xl border-2 border-olive-200 px-5 font-semibold transition hover:border-olive-400 focus:ring-2 focus:outline-none"
+            className="focus:ring-accent-500 min-h-10 rounded-xl border-2 border-olive-200 px-5 font-semibold transition hover:border-olive-400 focus:ring-2 focus:outline-none disabled:opacity-50"
           >
             Скасувати
           </button>
@@ -227,6 +230,14 @@ export function ProfilePage() {
   const profile = useProfile(!!me.data);
 
   if (me.isPending) return null;
+  // A failed /me is not "logged out": do not bounce a user with a valid cookie to /login.
+  if (me.isError) {
+    return (
+      <p role="alert" className="rounded-card bg-cream-50 text-accent-600 mt-8 p-6 font-medium">
+        {me.error.message}
+      </p>
+    );
+  }
   if (!me.data) return <Navigate to="/login" replace />;
 
   return (
