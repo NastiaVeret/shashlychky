@@ -7,6 +7,19 @@ MAX_PRODUCTS = 30
 MAX_PRODUCT_LEN = 40
 
 
+def normalize_product_names(products: list[str]) -> list[str]:
+    """Trim, drop empties, cap length, de-duplicate case-insensitively, keep order."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in products:
+        name = " ".join(raw.split())[:MAX_PRODUCT_LEN]
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            result.append(name)
+    return result
+
+
 class RecipeRequest(BaseModel):
     products: Annotated[list[str], Field(min_length=1, max_length=MAX_PRODUCTS)]
     preferences: Annotated[str | None, Field(max_length=200)] = None
@@ -15,15 +28,7 @@ class RecipeRequest(BaseModel):
     @field_validator("products")
     @classmethod
     def normalize_products(cls, products: list[str]) -> list[str]:
-        """Trim, drop empties, cap length, de-duplicate case-insensitively, keep order."""
-        seen: set[str] = set()
-        result: list[str] = []
-        for raw in products:
-            name = " ".join(raw.split())[:MAX_PRODUCT_LEN]
-            key = name.casefold()
-            if name and key not in seen:
-                seen.add(key)
-                result.append(name)
+        result = normalize_product_names(products)
         if not result:
             raise ValueError("Потрібен хоча б один продукт")
         return result

@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import Cookie, Depends
+from fastapi import Cookie, Depends, Response
 
 from app.core.config import Settings, get_settings
 from app.core.errors import NotAuthenticatedError
@@ -26,3 +26,9 @@ async def get_current_user(db: DbSession, token: SessionToken = None) -> User:
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def clear_session_cookie(response: Response, settings: Settings) -> None:
+    response.delete_cookie(
+        SESSION_COOKIE, httponly=True, secure=settings.session_cookie_secure, samesite="lax"
+    )

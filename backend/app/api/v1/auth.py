@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from fastapi import APIRouter, Response, status
 
-from app.api.deps import SESSION_COOKIE, SessionToken, SettingsDep
+from app.api.deps import SESSION_COOKIE, SessionToken, SettingsDep, clear_session_cookie
 from app.core.config import Settings
 from app.db.session import DbSession
 from app.models.user import User
@@ -58,6 +58,4 @@ async def logout(
     if token:
         await service.delete_session(db, token)
         await db.commit()
-    response.delete_cookie(
-        SESSION_COOKIE, httponly=True, secure=settings.session_cookie_secure, samesite="lax"
-    )
+    clear_session_cookie(response, settings)
