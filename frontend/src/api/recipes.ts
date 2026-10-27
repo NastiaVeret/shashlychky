@@ -26,3 +26,14 @@ export const getMyRecipes = (
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   return apiFetch<RecipeRead[]>(`/api/v1/me/recipes?${params}`, { signal });
 };
+
+export type RecipeNutrition = components['schemas']['RecipeNutrition'];
+export type NutritionFacts = components['schemas']['NutritionFacts'];
+
+export const nutritionKeys = {
+  detail: (id: number) => ['recipes', id, 'nutrition'] as const,
+};
+
+// The goal comparison is pure arithmetic on the client; the server is asked once per recipe.
+export const getRecipeNutrition = (id: number, signal?: AbortSignal) =>
+  apiFetch<RecipeNutrition>(`/api/v1/recipes/${id}/nutrition`, { signal });

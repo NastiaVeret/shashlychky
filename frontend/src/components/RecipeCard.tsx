@@ -1,4 +1,5 @@
 import type { Ingredient, RecipeRead } from '../api/recipes';
+import { NutritionPanel } from './NutritionPanel';
 
 function formatQuantity(i: Ingredient): string {
   if (i.quantity == null) return i.unit;
@@ -89,6 +90,8 @@ export function RecipeCard({ recipe }: { recipe: RecipeRead }) {
           ) : null}
         </section>
       </div>
+
+      <NutritionPanel recipeId={recipe.id} />
     </article>
   );
 }

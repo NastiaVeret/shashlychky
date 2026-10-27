@@ -550,6 +550,67 @@
           }
         }
       }
+    },
+    "/api/v1/recipes/{recipe_id}/nutrition": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "Read Recipe Nutrition",
+        "description": "Calories and macros of a stored recipe from Silpo product data, optionally vs a goal.",
+        "operationId": "read_recipe_nutrition_api_v1_recipes__recipe_id__nutrition_get",
+        "parameters": [
+          {
+            "name": "recipe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Recipe Id"
+            }
+          },
+          {
+            "name": "daily_kcal_goal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 6000,
+                  "minimum": 800
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Daily Kcal Goal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeNutrition"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -571,6 +632,25 @@
           "database"
         ],
         "title": "DbHealthResponse"
+      },
+      "GoalComparison": {
+        "properties": {
+          "daily_kcal": {
+            "type": "integer",
+            "title": "Daily Kcal"
+          },
+          "per_serving_percent": {
+            "type": "number",
+            "title": "Per Serving Percent",
+            "description": "Яку частку денної норми покриває одна порція"
+          }
+        },
+        "type": "object",
+        "required": [
+          "daily_kcal",
+          "per_serving_percent"
+        ],
+        "title": "GoalComparison"
       },
       "HTTPValidationError": {
         "properties": {
@@ -602,6 +682,79 @@
           "version"
         ],
         "title": "HealthResponse"
+      },
+      "IngredientNutrition": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "counted",
+              "to_taste",
+              "no_product",
+              "no_data",
+              "unknown_unit"
+            ],
+            "title": "Status"
+          },
+          "grams": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grams",
+            "description": "Вага інгредієнта в рецепті, якщо її вдалося визначити"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name",
+            "description": "Товар Сільпо, з якого взято КБЖВ"
+          },
+          "per_100g": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NutritionFacts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NutritionFacts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "status",
+          "grams",
+          "product_name",
+          "per_100g",
+          "total"
+        ],
+        "title": "IngredientNutrition"
       },
       "IngredientRead": {
         "properties": {
@@ -658,6 +811,90 @@
           "password"
         ],
         "title": "LoginRequest"
+      },
+      "NutritionFacts": {
+        "properties": {
+          "kcal": {
+            "type": "number",
+            "title": "Kcal"
+          },
+          "protein_g": {
+            "type": "number",
+            "title": "Protein G"
+          },
+          "fat_g": {
+            "type": "number",
+            "title": "Fat G"
+          },
+          "carbs_g": {
+            "type": "number",
+            "title": "Carbs G"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kcal",
+          "protein_g",
+          "fat_g",
+          "carbs_g"
+        ],
+        "title": "NutritionFacts"
+      },
+      "RecipeNutrition": {
+        "properties": {
+          "recipe_id": {
+            "type": "integer",
+            "title": "Recipe Id"
+          },
+          "servings": {
+            "type": "integer",
+            "title": "Servings"
+          },
+          "total": {
+            "$ref": "#/components/schemas/NutritionFacts"
+          },
+          "per_serving": {
+            "$ref": "#/components/schemas/NutritionFacts"
+          },
+          "counted_ingredients": {
+            "type": "integer",
+            "title": "Counted Ingredients"
+          },
+          "countable_ingredients": {
+            "type": "integer",
+            "title": "Countable Ingredients",
+            "description": "Інгредієнти з кількістю (без 'за смаком')"
+          },
+          "ingredients": {
+            "items": {
+              "$ref": "#/components/schemas/IngredientNutrition"
+            },
+            "type": "array",
+            "title": "Ingredients"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoalComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "recipe_id",
+          "servings",
+          "total",
+          "per_serving",
+          "counted_ingredients",
+          "countable_ingredients",
+          "ingredients",
+          "goal"
+        ],
+        "title": "RecipeNutrition"
       },
       "RecipeRead": {
         "properties": {
