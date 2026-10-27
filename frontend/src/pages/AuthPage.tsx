@@ -33,7 +33,11 @@ export function AuthPage() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    mutation.mutate({ email, password }, { onSuccess: () => navigate('/') });
+    mutation.mutate(
+      { email, password },
+      // A new account goes straight to the profile: that is what makes recipes personal.
+      { onSuccess: () => navigate(mode === 'register' ? '/profile' : '/') },
+    );
   };
 
   return (

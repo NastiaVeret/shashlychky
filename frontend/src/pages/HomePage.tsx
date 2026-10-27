@@ -1,15 +1,61 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
+import type { UserProfile } from '../api/profile';
 import { ProductInput } from '../components/ProductInput';
 import { RecipeCard } from '../components/RecipeCard';
+import { useMe } from '../hooks/useAuth';
+import { useProfile } from '../hooks/useProfile';
 import { useCreateRecipe } from '../hooks/useRecipes';
 
 const SERVINGS = [1, 2, 4, 6] as const;
 
+const HINT_LINK =
+  'focus:ring-accent-500 font-semibold underline hover:text-olive-900 focus:rounded focus:ring-2 focus:outline-none';
+
+function isFilled(p: UserProfile): boolean {
+  return [p.allergies, p.diets, p.disliked, p.equipment, p.pantry].some(
+    (l) => (l?.length ?? 0) > 0,
+  );
+}
+
+/** One line under the form: what personal context the next recipe will (or could) use. */
+function ProfileHint({ loggedIn, profile }: { loggedIn: boolean; profile?: UserProfile }) {
+  if (!loggedIn) {
+    return (
+      <p className="text-sm text-olive-800/80">
+        <Link to="/login" className={HINT_LINK}>
+          Увійдіть
+        </Link>
+        , щоб зберігати рецепти та враховувати алергії й смаки.
+      </p>
+    );
+  }
+  if (!profile) return null;
+  return (
+    <p className="text-sm text-olive-800/80">
+      {isFilled(profile)
+        ? 'Враховуємо ваш профіль: алергени, харчування, техніку й запаси. '
+        : 'Профіль порожній: додайте алергени й запаси, щоб рецепти були точнішими. '}
+      <Link to="/profile" className={HINT_LINK}>
+        {isFilled(profile) ? 'Змінити' : 'Заповнити'}
+      </Link>
+    </p>
+  );
+}
+
 export function HomePage() {
   const [products, setProducts] = useState<string[]>([]);
-  const [servings, setServings] = useState<number>(2);
+  // null until the user picks: until then the profile's usual servings apply.
+  const [pickedServings, setServings] = useState<number | null>(null);
   const [preferences, setPreferences] = useState('');
+  const me = useMe();
+  const profile = useProfile(!!me.data);
   const create = useCreateRecipe();
+  const servings = pickedServings ?? profile.data?.default_servings ?? 2;
+  // The API allows 1-12; if the profile holds a value we do not offer, show it as an extra option.
+  const servingOptions: number[] = (SERVINGS as readonly number[]).includes(servings)
+    ? [...SERVINGS]
+    : [...SERVINGS, servings].sort((a, b) => a - b);
 
   const canSubmit = products.length > 0 && !create.isPending;
 
@@ -44,7 +90,7 @@ export function HomePage() {
           <fieldset>
             <legend className="mb-2 text-sm font-semibold text-olive-800">Порцій</legend>
             <div className="flex gap-2">
-              {SERVINGS.map((n) => (
+              {servingOptions.map((n) => (
                 <button
                   key={n}
                   type="button"
@@ -89,6 +135,7 @@ export function HomePage() {
             </p>
           ) : null}
         </div>
+        {me.isPending ? null : <ProfileHint loggedIn={!!me.data} profile={profile.data} />}
       </form>
 
       {create.isPending ? (
