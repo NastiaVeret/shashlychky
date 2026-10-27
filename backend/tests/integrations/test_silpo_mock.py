@@ -1,15 +1,16 @@
 import json
-import sys
-from pathlib import Path
 
 import pytest
 from mcp.shared.memory import create_connected_server_and_client_session
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-import mock_server  # noqa: E402
+from tests.silpo_mock import server as mock_server
 
-CTX = {"branchId": mock_server.BRANCH_ID, "deliveryType": "DeliveryHome",
-       "timeslotStart": mock_server.SLOT["start"], "timeslotEnd": mock_server.SLOT["end"]}
+CTX = {
+    "branchId": mock_server.BRANCH_ID,
+    "deliveryType": "DeliveryHome",
+    "timeslotStart": mock_server.SLOT["start"],
+    "timeslotEnd": mock_server.SLOT["end"],
+}
 
 
 async def call(s, name, args=None):
@@ -32,26 +33,61 @@ async def _search_and_cart_flow(session):
     found = await call(session, "silpo_find_products_batch", {**CTX, "products": ["яйця", ""]})
     assert found["meta"]["droppedCount"] == 1
     egg = found["queries"][0]["products"][0]
-    await call(session, "silpo_add_cart_products", {"shoppingCartId": mock_server.CART_ID, "products": [
-        {"productId": egg["id"], "companyId": egg["companyId"], "branchId": egg["branchId"], "quantity": 2}]})
-    cart = (await call(session, "silpo_get_shopping_cart_by_id", {"shoppingCartId": mock_server.CART_ID}))["cart"]
+    await call(
+        session,
+        "silpo_add_cart_products",
+        {
+            "shoppingCartId": mock_server.CART_ID,
+            "products": [
+                {
+                    "productId": egg["id"],
+                    "companyId": egg["companyId"],
+                    "branchId": egg["branchId"],
+                    "quantity": 2,
+                }
+            ],
+        },
+    )
+    cart = (
+        await call(
+            session, "silpo_get_shopping_cart_by_id", {"shoppingCartId": mock_server.CART_ID}
+        )
+    )["cart"]
     line = cart["shipments"][0]["products"][0]
     assert line["quantity"] == 2 and cart["calculation"]["total"] == round(egg["price"] * 2, 2)
-    await call(session, "silpo_update_cart_products",
-               {"shoppingCartId": mock_server.CART_ID, "products": [{"id": line["id"], "quantity": 999}]})
-    cart = (await call(session, "silpo_get_shopping_cart_by_id", {"shoppingCartId": mock_server.CART_ID}))["cart"]
+    await call(
+        session,
+        "silpo_update_cart_products",
+        {"shoppingCartId": mock_server.CART_ID, "products": [{"id": line["id"], "quantity": 999}]},
+    )
+    cart = (
+        await call(
+            session, "silpo_get_shopping_cart_by_id", {"shoppingCartId": mock_server.CART_ID}
+        )
+    )["cart"]
     assert "product.offer.stock.max" in [v["message"] for v in cart["calculation"]["validations"]]
 
 
 async def _unknown_product_silently_ignored(session):
-    await call(session, "silpo_add_cart_products", {"shoppingCartId": mock_server.CART_ID, "products": [
-        {"productId": "nope", "companyId": "c", "branchId": "b", "quantity": 1}]})
-    cart = (await call(session, "silpo_get_shopping_cart_by_id", {"shoppingCartId": mock_server.CART_ID}))["cart"]
+    await call(
+        session,
+        "silpo_add_cart_products",
+        {
+            "shoppingCartId": mock_server.CART_ID,
+            "products": [{"productId": "nope", "companyId": "c", "branchId": "b", "quantity": 1}],
+        },
+    )
+    cart = (
+        await call(
+            session, "silpo_get_shopping_cart_by_id", {"shoppingCartId": mock_server.CART_ID}
+        )
+    )["cart"]
     assert cart["shipments"][0]["products"] == []
 
 
 async def test_client_detects_product_that_was_not_added():
-    from silpo_client import SilpoClient
+    from app.integrations.silpo.client import SilpoClient
+
     mock_server._reset()
     async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
         silpo = SilpoClient(session)
@@ -65,7 +101,8 @@ async def test_client_detects_product_that_was_not_added():
 
 
 async def test_client_set_quantity_remove_and_similar():
-    from silpo_client import SilpoClient
+    from app.integrations.silpo.client import SilpoClient
+
     mock_server._reset()
     async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
         silpo = SilpoClient(session)
@@ -74,19 +111,24 @@ async def test_client_set_quantity_remove_and_similar():
         await silpo.add_products_verified([(egg, 1)])
         assert await silpo.set_quantity(egg["id"], 3)
         assert not await silpo.set_quantity("nope", 3)
-        assert [p["name"] for p in await silpo.similar_products(egg)] == ["Яйця перепелині «Премія»®"]
+        assert [p["name"] for p in await silpo.similar_products(egg)] == [
+            "Яйця перепелині «Премія»®"
+        ]
         assert await silpo.remove_products([egg["id"]]) == []
         assert await silpo.food_restrictions() == []
 
 
 async def test_stale_cart_slot_is_fixed_by_client():
-    from silpo_client import SilpoClient
+    from app.integrations.silpo.client import SilpoClient
+
     mock_server._reset()
     async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
         silpo = SilpoClient(session)
 
         def errors(cart):
-            return [v["message"] for v in cart["calculation"]["validations"] if v["level"] == "error"]
+            return [
+                v["message"] for v in cart["calculation"]["validations"] if v["level"] == "error"
+            ]
 
         _, cart = await silpo.cart()
         assert errors(cart) == ["timeslot.not_found"]  # старт: слот протух, як у реальному акаунті
@@ -98,7 +140,8 @@ async def test_stale_cart_slot_is_fixed_by_client():
 
 
 async def test_add_products_verified_ok_even_with_stale_slot():
-    from silpo_client import SilpoClient
+    from app.integrations.silpo.client import SilpoClient
+
     mock_server._reset()
     async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
         silpo = SilpoClient(session)
@@ -126,31 +169,38 @@ class _FakeSession:
 
 
 async def test_call_retries_on_rate_limit_then_succeeds(monkeypatch):
-    import silpo_client
-    from silpo_client import SilpoClient
+    from app.integrations.silpo import client as silpo_client
+    from app.integrations.silpo.client import SilpoClient
+
     delays = []
 
     async def fake_sleep(d):
         delays.append(d)
 
     monkeypatch.setattr(silpo_client.asyncio, "sleep", fake_sleep)
-    session = _FakeSession(_FakeResult("Error 429: too many requests", True),
-                           _FakeResult("Rate limit exceeded"), _FakeResult('{"success": true}'))
+    session = _FakeSession(
+        _FakeResult("Error 429: too many requests", True),
+        _FakeResult("Rate limit exceeded"),
+        _FakeResult('{"success": true}'),
+    )
     assert await SilpoClient(session).call("x") == {"success": True}
     assert delays == [1, 2]
 
 
 async def test_call_raises_with_server_text_when_not_json():
-    from silpo_client import SilpoClient, SilpoError
+    from app.integrations.silpo.client import SilpoClient, SilpoError
+
     session = _FakeSession(_FakeResult("Product not found"))
     with pytest.raises(SilpoError) as e:
         await SilpoClient(session).call("silpo_add_cart_products")
-    assert e.value.text == "Product not found" and session.calls == 1  # без повторів на звичайну помилку
+    assert (
+        e.value.text == "Product not found" and session.calls == 1
+    )  # без повторів на звичайну помилку
 
 
 async def test_call_gives_up_after_all_retries(monkeypatch):
-    import silpo_client
-    from silpo_client import SilpoClient, SilpoError
+    from app.integrations.silpo import client as silpo_client
+    from app.integrations.silpo.client import SilpoClient, SilpoError
 
     async def fake_sleep(d):
         pass
@@ -163,6 +213,7 @@ async def test_call_gives_up_after_all_retries(monkeypatch):
 
 
 # ---------- додаткові перевірки самого mock ----------
+
 
 async def _tool(name, args=None):
     async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as s:
@@ -194,9 +245,14 @@ async def test_mock_all_blank_queries_dropped():
 
 
 async def test_mock_product_details_known_and_unknown_slug():
-    ok = await _tool("silpo_get_product_details", {**CTX, "slug": "moloko-galychyna-ultrapasteryzovane-2-5-815590"})
+    ok = await _tool(
+        "silpo_get_product_details",
+        {**CTX, "slug": "moloko-galychyna-ultrapasteryzovane-2-5-815590"},
+    )
     assert ok["product"]["attributes"]["Білки (г)"] == 2.8
-    assert "Склад" not in ok["product"]["attributes"]  # як у реальному Сільпо: складу й алергенів немає
+    assert (
+        "Склад" not in ok["product"]["attributes"]
+    )  # як у реальному Сільпо: складу й алергенів немає
     bad = await _tool("silpo_get_product_details", {**CTX, "slug": "nope"})
     assert bad["success"] is False
 
@@ -204,10 +260,21 @@ async def test_mock_product_details_known_and_unknown_slug():
 async def test_mock_adding_same_product_twice_is_an_error():
     mock_server._reset()
     async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as s:
-        egg = (await call(s, "silpo_find_products_batch", {**CTX, "products": ["яйця курячі"]}))["queries"][0]["products"][0]
-        item = {"productId": egg["id"], "companyId": egg["companyId"], "branchId": egg["branchId"], "quantity": 1}
-        assert (await call(s, "silpo_add_cart_products", {"shoppingCartId": "c", "products": [item]}))["success"]
-        again = await call(s, "silpo_add_cart_products", {"shoppingCartId": "c", "products": [item]})
+        egg = (await call(s, "silpo_find_products_batch", {**CTX, "products": ["яйця курячі"]}))[
+            "queries"
+        ][0]["products"][0]
+        item = {
+            "productId": egg["id"],
+            "companyId": egg["companyId"],
+            "branchId": egg["branchId"],
+            "quantity": 1,
+        }
+        assert (
+            await call(s, "silpo_add_cart_products", {"shoppingCartId": "c", "products": [item]})
+        )["success"]
+        again = await call(
+            s, "silpo_add_cart_products", {"shoppingCartId": "c", "products": [item]}
+        )
         assert again["success"] is False
 
 
@@ -218,13 +285,16 @@ async def test_mock_out_of_stock_product_is_marked_unavailable():
 
 
 async def test_mock_similar_excludes_the_product_itself():
-    res = await _tool("silpo_get_similar_products", {**CTX, "slug": "yaitsia-kuriachi-shanychi-s0-931223"})
+    res = await _tool(
+        "silpo_get_similar_products", {**CTX, "slug": "yaitsia-kuriachi-shanychi-s0-931223"}
+    )
     assert all(p["slug"] != "yaitsia-kuriachi-shanychi-s0-931223" for p in res["products"])
     assert (await _tool("silpo_get_similar_products", {**CTX, "slug": "nope"}))["success"] is False
 
 
 async def test_mock_stock_overflow_surfaces_as_validation_not_error():
-    from silpo_client import SilpoClient
+    from app.integrations.silpo.client import SilpoClient
+
     mock_server._reset()
     async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
         silpo = SilpoClient(session)
@@ -234,13 +304,17 @@ async def test_mock_stock_overflow_surfaces_as_validation_not_error():
 
 
 async def test_mock_checkout_links_appear_only_for_valid_orderable_cart():
-    from silpo_client import SilpoClient
+    from app.integrations.silpo.client import SilpoClient
+
     mock_server._reset()
     async with create_connected_server_and_client_session(mock_server.mcp._mcp_server) as session:
         silpo = SilpoClient(session)
         egg = (await silpo.find_products(["яйця курячі"], limit=1))["яйця курячі"][0]
         await silpo.add_products_verified([(egg, 1)])
-        assert (await silpo.checkout_links()) == {"web": None, "mobile": None}  # менше мінімальної суми
+        assert (await silpo.checkout_links()) == {
+            "web": None,
+            "mobile": None,
+        }  # менше мінімальної суми
         await silpo.set_quantity(egg["id"], 6)  # 6 * 138.03 > 799
         links = await silpo.checkout_links()
         assert links["web"] and links["mobile"]

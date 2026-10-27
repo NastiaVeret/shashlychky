@@ -1,3 +1,11 @@
+# Silpo MCP integration
+
+Exploration notes by the integration author (kept in Ukrainian as written). Code lives in
+`backend/app/integrations/silpo/`, the in-memory mock in `backend/tests/silpo_mock/`, tests in
+`backend/tests/integrations/`. Run the mock locally with `make silpo-mock`.
+
+---
+
 # mcp-silpo
 
 Підключення до MCP Сільпо для Cook 'n' Love: **mock-сервер** для розробки й тестів

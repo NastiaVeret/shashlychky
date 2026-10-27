@@ -6,8 +6,10 @@
 TokenStorage на користувача (БД), решта коду не змінюється.
 Токени ніколи не віддавати у фронтенд.
 """
+
 import asyncio
 import json
+import logging
 import time
 import webbrowser
 from pathlib import Path
@@ -16,9 +18,18 @@ from urllib.parse import parse_qs, urlparse
 from mcp.client.auth import OAuthClientProvider, TokenStorage
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
 
+logger = logging.getLogger(__name__)
+
 REDIRECT_PORT = 8765
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/callback"
-DEFAULT_TOKEN_FILE = Path(".silpo_tokens.json")  # у .gitignore
+# Anchored to backend/ (not the CWD) so a script run from the repo root cannot drop a live
+# refresh token somewhere the root .gitignore does not cover. Dev-only; the web service must
+# keep tokens per user in the database instead.
+DEFAULT_TOKEN_FILE = Path(__file__).resolve().parents[3] / ".silpo_tokens.json"
+
+
+class SilpoAuthError(RuntimeError):
+    """The user declined the OAuth consent, or the callback carried an error."""
 
 
 class FileTokenStorage(TokenStorage):
@@ -43,7 +54,9 @@ class FileTokenStorage(TokenStorage):
     async def set_tokens(self, tokens: OAuthToken) -> None:
         self._write("tokens", tokens)
         data = self._read()
-        data["saved_at"] = time.time()  # SDK не пам'ятає, коли токен отримано; без цього після перезапуску
+        data["saved_at"] = (
+            time.time()
+        )  # SDK не пам'ятає, коли токен отримано; без цього після перезапуску
         self.path.write_text(json.dumps(data))  # він вважав би токен вічно дійсним
         self.path.chmod(0o600)
 
@@ -64,7 +77,7 @@ class FileTokenStorage(TokenStorage):
 
 
 async def open_in_browser(url: str) -> None:
-    print(f"Відкрийте для входу в Сільпо (якщо браузер не відкрився сам):\n{url}")
+    logger.info("Open to log in to Silpo (if the browser did not open itself): %s", url)
     webbrowser.open(url)
 
 
@@ -74,22 +87,26 @@ async def wait_for_callback() -> tuple[str, str | None]:
 
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         request_line = (await reader.readline()).decode()
-        query = parse_qs(urlparse(request_line.split(" ")[1]).query)
+        parts = request_line.split(" ")
+        query = parse_qs(urlparse(parts[1]).query) if len(parts) > 1 else {}
         body = "Готово, можна закрити вкладку.".encode()
-        writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\n"
-                     b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+        writer.write(
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\n"
+            b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
+        )
         await writer.drain()
         writer.close()
         if "code" in query and not result.done():
             result.set_result((query["code"][0], query.get("state", [None])[0]))
         elif "error" in query and not result.done():
-            result.set_exception(RuntimeError(f"Авторизація відхилена: {query['error'][0]}"))
+            result.set_exception(SilpoAuthError(f"Авторизація відхилена: {query['error'][0]}"))
 
     server = await asyncio.start_server(handle, "127.0.0.1", REDIRECT_PORT)
     try:
         return await asyncio.wait_for(result, timeout=300)
     finally:
         server.close()
+        await server.wait_closed()
 
 
 class SilpoOAuthProvider(OAuthClientProvider):
@@ -107,8 +124,12 @@ class SilpoOAuthProvider(OAuthClientProvider):
             self.context.token_expiry_time = expiry
 
 
-def make_auth(server_url: str, storage: TokenStorage | None = None,
-              redirect_handler=open_in_browser, callback_handler=wait_for_callback) -> OAuthClientProvider:
+def make_auth(
+    server_url: str,
+    storage: TokenStorage | None = None,
+    redirect_handler=open_in_browser,
+    callback_handler=wait_for_callback,
+) -> OAuthClientProvider:
     """Провайдер авторизації для streamablehttp_client(url, auth=...)."""
     return SilpoOAuthProvider(
         server_url=server_url,
