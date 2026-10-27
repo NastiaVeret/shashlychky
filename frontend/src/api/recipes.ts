@@ -3,7 +3,7 @@ import type { components } from './schema';
 
 // Types come from the generated OpenAPI schema (`make types`); never hand-write API shapes here.
 export type RecipeRequest = components['schemas']['RecipeRequest'];
-export type Ingredient = components['schemas']['Ingredient'];
+export type Ingredient = components['schemas']['IngredientRead'];
 export type RecipeRead = components['schemas']['RecipeRead'];
 
 export const recipeKeys = {
