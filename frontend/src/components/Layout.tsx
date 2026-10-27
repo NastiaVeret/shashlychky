@@ -10,14 +10,19 @@ function AccountNav() {
   const logout = useLogout();
   const navigate = useNavigate();
 
-  // Render nothing until we know, so the header does not flash "Увійти" for a logged-in user.
-  if (me.isPending) return null;
+  // Until we know, keep the slot (no layout shift) and do not claim "guest": a logged-in user
+  // must not see "Увійти" because /me is pending or failed on a network blip.
+  if (me.isPending || me.isError) {
+    return <div className="min-h-10" aria-hidden />;
+  }
 
   if (!me.data) {
     return (
-      <NavLink to="/login" className={NAV_ITEM}>
-        Увійти
-      </NavLink>
+      <nav aria-label="Акаунт">
+        <NavLink to="/login" className={NAV_ITEM}>
+          Увійти
+        </NavLink>
+      </nav>
     );
   }
 
@@ -31,7 +36,7 @@ function AccountNav() {
       </NavLink>
       <button
         type="button"
-        onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/') })}
+        onClick={() => logout.mutate(undefined, { onSettled: () => navigate('/') })}
         disabled={logout.isPending}
         className={`${NAV_ITEM} disabled:opacity-50`}
       >

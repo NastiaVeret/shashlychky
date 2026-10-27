@@ -18,9 +18,12 @@ export class ApiError extends Error {
 async function errorMessage(res: Response): Promise<string> {
   try {
     const body: unknown = await res.json();
-    if (body && typeof body === 'object' && 'detail' in body) {
-      const detail = (body as { detail: unknown }).detail;
-      if (typeof detail === 'string') return detail;
+    const detail = (body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === 'string') return detail;
+    // FastAPI validation errors (422) come as a list; surface the first message as-is.
+    if (Array.isArray(detail) && detail.length > 0) {
+      const msg = (detail[0] as { msg?: unknown } | null)?.msg;
+      if (typeof msg === 'string') return msg.replace(/^Value error, /, '');
     }
   } catch {
     // not JSON

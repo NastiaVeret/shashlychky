@@ -19,7 +19,8 @@ function onLoggedIn(qc: QueryClient, user: UserRead) {
   void qc.invalidateQueries({ queryKey: recipeKeys.mine });
 }
 
-function onLoggedOut(qc: QueryClient) {
+/** Also called from the QueryClient caches when any request answers 401: the session is gone. */
+export function onLoggedOut(qc: QueryClient) {
   qc.setQueryData(meKeys.me, null);
   qc.removeQueries({ queryKey: profileKeys.profile });
   qc.removeQueries({ queryKey: recipeKeys.mine });
@@ -45,7 +46,9 @@ export function useLogout() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: logout,
-    onSuccess: () => onLoggedOut(qc),
+    // The cookie is httpOnly, so the client cannot clear it; whether or not the server answered,
+    // forgetting the user locally is what the person expects after pressing "Вийти".
+    onSettled: () => onLoggedOut(qc),
   });
 }
 
