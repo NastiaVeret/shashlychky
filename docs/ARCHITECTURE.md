@@ -151,7 +151,7 @@ still does, the request fails with 502 and nothing is stored. Allergy names are 
 | slow or overloaded model | 12 s per-attempt deadline; on timeout / 503 / 504 one attempt on `GEMINI_FALLBACK_MODEL` |
 | invalid JSON | one corrective retry, then 502 |
 | rate limits (429) | treated as unavailable → fallback → 503 |
-| cost | cheapest open model by default; thinking disabled (`thinking_budget=0`); `max_output_tokens=2048`; one candidate |
+| cost | cheapest open model by default; thinking disabled (`thinking_budget=0`) **on the primary model only** - the fallback answers 400 to that flag; `max_output_tokens=2048`; one candidate |
 | observability | tokens, latency and the model that answered are logged and stored on each recipe row |
 | secrets | API key only in Secret Manager → env var; never in the frontend or the repo |
 
@@ -160,6 +160,23 @@ after its retirement for new users. `gemini-3.1-flash-lite` ($0.25 / $1.50 per 1
 the cheapest model still open, so it is the default; `gemini-3.5-flash-lite` is the fallback. A recipe costs roughly
 380 input + 600 output tokens, about $0.001. Measured latency in production: 3–9 s when the primary model answers;
 Gemini intermittently returns `504 DEADLINE_EXCEEDED` for 3.1 Flash-Lite, which the fallback absorbs.
+
+**Evals (risk R2).** The model is not trusted, so it is measured. `backend/evals/` holds a dataset of inputs that
+have made it misbehave - gibberish products, non-food items, an instruction smuggled into a product name, a vegan
+profile, an allergy profile, quantities written into product names - plus the checks that say what a good answer
+looks like. Two modes share both:
+
+- `make eval` replays **scripted** provider answers (invented unit, truncated JSON, prose instead of JSON, HTTP
+  timeout, 503) through the real client, so validation, the corrective retry and the fallback are verified
+  deterministically. No API key, no cost; it runs in CI via `tests/test_evals_offline.py`.
+- `make eval-live REPEATS=5` sends the dataset to the real model and repeats each case, because an LLM that answers
+  correctly once may not answer correctly five times. That run produces `docs/eval-report.md` and backs
+  [STABILITY.md](STABILITY.md).
+
+Repetition is the point: a case that passes 4 times out of 5 is a different problem from one that always fails, and
+the report separates the two. Both bugs listed in STABILITY.md - a fallback model that rejected every request, and
+an `httpx.ReadTimeout` that escaped as a 500 - were found by the live run and missed by the unit tests, which
+checked that the fallback was *called* rather than that it *answered*.
 
 ## 5. Database and migrations
 
