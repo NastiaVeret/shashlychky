@@ -132,6 +132,7 @@ async def _generate_without_allergens(
         prompt_tokens=_add_tokens(first.prompt_tokens, retry.prompt_tokens),
         output_tokens=_add_tokens(first.output_tokens, retry.output_tokens),
         latency_ms=first.latency_ms + retry.latency_ms,
+        attempts=first.attempts + retry.attempts,
     )
 
 

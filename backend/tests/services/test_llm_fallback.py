@@ -66,6 +66,30 @@ async def test_overloaded_primary_falls_back_once() -> None:
     assert calls == ["primary", "fallback"]
 
 
+async def test_fallback_call_drops_thinking_config() -> None:
+    """gemini-3.5-flash-lite answers 400 to thinking_budget=0, so the fallback must not send it."""
+    settings = Settings(
+        gemini_api_key="test",
+        gemini_model="primary",
+        gemini_fallback_model="fallback",
+        llm_timeout_seconds=1,
+    )
+    llm = GeminiLLM(settings)
+    configs: dict[str, Any] = {}
+
+    async def fake_generate(*, model: str, contents: Any, config: Any) -> Any:
+        configs[model] = config
+        if model == "primary":
+            raise _server_error(503)
+        return _Response(SAMPLE_RECIPE)
+
+    llm._client.aio.models.generate_content = fake_generate  # type: ignore[method-assign]
+    await llm.generate(system="s", user="u", schema=RecipeContent)
+
+    assert configs["primary"].thinking_config.thinking_budget == 0
+    assert configs["fallback"].thinking_config is None
+
+
 async def test_both_models_down_raises_unavailable() -> None:
     def behaviour(_model: str) -> Any:
         raise _server_error(504)
