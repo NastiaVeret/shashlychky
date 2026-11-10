@@ -220,6 +220,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/silpo/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Connection
+         * @description Whether the user's Silpo account is connected.
+         */
+        get: operations["read_connection_api_v1_silpo_connection_get"];
+        put?: never;
+        /**
+         * Start Connection
+         * @description Start the Silpo login; the frontend navigates to `authorize_url`. 503 if Silpo fails.
+         */
+        post: operations["start_connection_api_v1_silpo_connection_post"];
+        /**
+         * Delete Connection
+         * @description Disconnect the user's Silpo account.
+         */
+        delete: operations["delete_connection_api_v1_silpo_connection_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -381,6 +409,24 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * SilpoAuthorizeRead
+         * @description Where to send the browser to log in to Silpo; it comes back to /api/v1/silpo/callback.
+         */
+        SilpoAuthorizeRead: {
+            /** Authorize Url */
+            authorize_url: string;
+        };
+        /**
+         * SilpoConnectionRead
+         * @description Whether the user's own Silpo account is connected. Tokens never leave the server.
+         */
+        SilpoConnectionRead: {
+            /** Connected */
+            connected: boolean;
+            /** Connected At */
+            connected_at?: string | null;
         };
         /**
          * UserProfile
@@ -838,6 +884,97 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RecipeNutrition"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_connection_api_v1_silpo_connection_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SilpoConnectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_connection_api_v1_silpo_connection_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SilpoAuthorizeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_connection_api_v1_silpo_connection_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

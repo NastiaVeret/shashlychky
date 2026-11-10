@@ -611,6 +611,145 @@
           }
         }
       }
+    },
+    "/api/v1/silpo/connection": {
+      "get": {
+        "tags": [
+          "silpo"
+        ],
+        "summary": "Read Connection",
+        "description": "Whether the user's Silpo account is connected.",
+        "operationId": "read_connection_api_v1_silpo_connection_get",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SilpoConnectionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "silpo"
+        ],
+        "summary": "Start Connection",
+        "description": "Start the Silpo login; the frontend navigates to `authorize_url`. 503 if Silpo fails.",
+        "operationId": "start_connection_api_v1_silpo_connection_post",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SilpoAuthorizeRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "silpo"
+        ],
+        "summary": "Delete Connection",
+        "description": "Disconnect the user's Silpo account.",
+        "operationId": "delete_connection_api_v1_silpo_connection_delete",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1039,6 +1178,46 @@
           "password"
         ],
         "title": "RegisterRequest"
+      },
+      "SilpoAuthorizeRead": {
+        "properties": {
+          "authorize_url": {
+            "type": "string",
+            "title": "Authorize Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorize_url"
+        ],
+        "title": "SilpoAuthorizeRead",
+        "description": "Where to send the browser to log in to Silpo; it comes back to /api/v1/silpo/callback."
+      },
+      "SilpoConnectionRead": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "connected_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected"
+        ],
+        "title": "SilpoConnectionRead",
+        "description": "Whether the user's own Silpo account is connected. Tokens never leave the server."
       },
       "UserProfile": {
         "properties": {

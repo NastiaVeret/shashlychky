@@ -1,35 +1,61 @@
-"""TokenStorage backed by the `silpo_tokens` table, for the web service.
+"""TokenStorage backed by the database, for the web service.
 
 Mirrors FileTokenStorage: tokens + client registration + `saved_at`, so the provider can tell
-when a loaded token expires and refresh it instead of asking for a login.
+when a loaded token expires and refresh it instead of asking for a login. By default it uses the
+shared service row (`silpo_tokens`, id=1); `for_user` points it at a user's `silpo_connections`.
 """
 
 import time
+import uuid
 
 from mcp.client.auth import TokenStorage
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.models.silpo_connection import SilpoConnection
 from app.models.silpo_token import SilpoToken
 
 SHARED_ROW_ID = 1
 
+type TokenRow = SilpoToken | SilpoConnection
+
 
 class DbTokenStorage(TokenStorage):
-    def __init__(self, sessionmaker: async_sessionmaker[AsyncSession], row_id: int = SHARED_ROW_ID):
+    def __init__(
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        row_id: int | uuid.UUID = SHARED_ROW_ID,
+    ):
         self._sessionmaker = sessionmaker
         self._row_id = row_id
+        # A user id selects the user's connection, an int the shared service row.
+        self._model: type[TokenRow] = (
+            SilpoConnection if isinstance(row_id, uuid.UUID) else SilpoToken
+        )
 
-    async def _row(self, session: AsyncSession) -> SilpoToken:
-        row = await session.get(SilpoToken, self._row_id)
+    @classmethod
+    def for_user(
+        cls, sessionmaker: async_sessionmaker[AsyncSession], user_id: uuid.UUID
+    ) -> "DbTokenStorage":
+        return cls(sessionmaker, user_id)
+
+    async def _get(self, session: AsyncSession) -> TokenRow | None:
+        return await session.get(self._model, self._row_id)
+
+    async def _row(self, session: AsyncSession) -> TokenRow:
+        row = await self._get(session)
         if row is None:
-            row = SilpoToken(id=self._row_id)
+            row = (
+                SilpoConnection(user_id=self._row_id)
+                if isinstance(self._row_id, uuid.UUID)
+                else SilpoToken(id=self._row_id)
+            )
             session.add(row)
         return row
 
     async def get_tokens(self) -> OAuthToken | None:
         async with self._sessionmaker() as session:
-            row = await session.get(SilpoToken, self._row_id)
+            row = await self._get(session)
             return OAuthToken(**row.tokens) if row and row.tokens else None
 
     async def set_tokens(self, tokens: OAuthToken) -> None:
@@ -41,7 +67,7 @@ class DbTokenStorage(TokenStorage):
 
     async def get_client_info(self) -> OAuthClientInformationFull | None:
         async with self._sessionmaker() as session:
-            row = await session.get(SilpoToken, self._row_id)
+            row = await self._get(session)
             return (
                 OAuthClientInformationFull(**row.client_info) if row and row.client_info else None
             )
@@ -54,7 +80,7 @@ class DbTokenStorage(TokenStorage):
 
     async def expiry_time_async(self) -> float | None:
         async with self._sessionmaker() as session:
-            row = await session.get(SilpoToken, self._row_id)
+            row = await self._get(session)
             if row is None or not row.tokens or row.saved_at is None:
                 return None
             expires_in = row.tokens.get("expires_in")
