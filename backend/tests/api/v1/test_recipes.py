@@ -1,6 +1,17 @@
 from httpx import AsyncClient
 
+from app.schemas.recipes import Ingredient, RecipeContent
 from tests.conftest import FakeCatalogProvider, FakeLLM, FakeNutrition
+
+# One ingredient the user does not have: 3 eggs (Silpo sells them as "10шт" in the fake catalogue)
+MISSING_EGGS_RECIPE = RecipeContent(
+    title="Яєчня",
+    description="Проста яєчня.",
+    cooking_time_minutes=5,
+    servings=1,
+    ingredients=[Ingredient(name="Яйця", quantity=3, unit="шт", have_at_home=False)],
+    steps=["Посмажити яйця."],
+)
 
 
 async def test_create_recipe_returns_201_and_stored_recipe(
@@ -183,3 +194,54 @@ async def test_allergen_check_of_missing_recipe_returns_404(
 ) -> None:
     response = await client.get("/api/v1/recipes/999999999/allergens")
     assert response.status_code == 404
+
+
+async def test_shopping_list_skips_what_is_at_home_and_needs_no_silpo(
+    client: AsyncClient, fake_llm: FakeLLM, fake_catalog: FakeCatalogProvider, db_required: None
+) -> None:
+    # SAMPLE_RECIPE: every ingredient is marked as already at home
+    created = (await client.post("/api/v1/recipes", json={"products": ["яйця"]})).json()
+
+    response = await client.get(f"/api/v1/recipes/{created['id']}/shopping-list")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [(line["name"], line["status"]) for line in body["lines"]] == [
+        ("Яйця", "at_home"),
+        ("Помідор", "at_home"),
+        ("Сіль", "at_home"),
+    ]
+    assert body["total_price"] is None and body["needs_attention"] == 0
+    assert fake_catalog.calls == []
+
+
+async def test_shopping_list_when_silpo_is_down_returns_503(
+    client: AsyncClient, fake_llm: FakeLLM, down_catalog: FakeCatalogProvider, db_required: None
+) -> None:
+    fake_llm.responses = [MISSING_EGGS_RECIPE]
+    created = (await client.post("/api/v1/recipes", json={"products": ["яйця"]})).json()
+
+    response = await client.get(f"/api/v1/recipes/{created['id']}/shopping-list")
+
+    assert response.status_code == 503
+
+
+async def test_shopping_list_prices_what_the_user_has_to_buy(
+    client: AsyncClient, fake_llm: FakeLLM, fake_catalog: FakeCatalogProvider, db_required: None
+) -> None:
+    fake_llm.responses = [MISSING_EGGS_RECIPE]
+    created = (await client.post("/api/v1/recipes", json={"products": ["борошно"]})).json()
+
+    response = await client.get(f"/api/v1/recipes/{created['id']}/shopping-list")
+
+    assert response.status_code == 200, response.text
+    (line,) = response.json()["lines"]
+    assert line["status"] == "ok" and line["product"]["package"] == "10шт"
+    assert line["purchase"]["quantity"] == 1 and line["purchase"]["total_price"] == 138.03
+    assert response.json()["total_price"] == 138.03
+
+
+async def test_shopping_list_of_missing_recipe_returns_404(
+    client: AsyncClient, fake_catalog: FakeCatalogProvider, db_required: None
+) -> None:
+    assert (await client.get("/api/v1/recipes/999999999/shopping-list")).status_code == 404

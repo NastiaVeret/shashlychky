@@ -7,9 +7,11 @@ from app.db.session import DbSession
 from app.schemas.allergens import RecipeAllergenCheck
 from app.schemas.nutrition import MAX_DAILY_KCAL, MIN_DAILY_KCAL, RecipeNutrition
 from app.schemas.recipes import RecipeRead, RecipeRequest
+from app.schemas.shopping import RecipeShoppingList
 from app.services import nutrition as nutrition_service
 from app.services import product_allergens as allergen_service
 from app.services import recipes as service
+from app.services import shopping as shopping_service
 from app.services.catalog import CatalogDep
 from app.services.llm import LLMDep
 from app.services.nutrition import NutritionDep
@@ -51,3 +53,12 @@ async def read_recipe_allergens(
     """Allergens of the Silpo products behind a recipe's ingredients, checked against the
     logged-in user's allergies. A product with no data is reported as unknown, never as safe."""
     return await allergen_service.recipe_allergen_check(db, catalog, recipe_id, user)
+
+
+@router.get("/{recipe_id}/shopping-list", response_model=RecipeShoppingList)
+async def read_recipe_shopping_list(
+    recipe_id: int, db: DbSession, catalog: CatalogDep, user: OptionalUser
+) -> RecipeShoppingList:
+    """What to buy at Silpo for the ingredients the user does not have: product, packs or kg,
+    price, and vetted alternatives when a product is out of stock or short."""
+    return await shopping_service.recipe_shopping_list(db, catalog, recipe_id, user)
