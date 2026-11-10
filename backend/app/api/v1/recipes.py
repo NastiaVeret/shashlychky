@@ -4,10 +4,13 @@ from fastapi import APIRouter, Query, status
 
 from app.api.deps import OptionalUser
 from app.db.session import DbSession
+from app.schemas.allergens import RecipeAllergenCheck
 from app.schemas.nutrition import MAX_DAILY_KCAL, MIN_DAILY_KCAL, RecipeNutrition
 from app.schemas.recipes import RecipeRead, RecipeRequest
 from app.services import nutrition as nutrition_service
+from app.services import product_allergens as allergen_service
 from app.services import recipes as service
+from app.services.catalog import CatalogDep
 from app.services.llm import LLMDep
 from app.services.nutrition import NutritionDep
 
@@ -39,3 +42,12 @@ async def read_recipe_nutrition(
 ) -> RecipeNutrition:
     """Calories and macros of a stored recipe from Silpo product data, optionally vs a goal."""
     return await nutrition_service.recipe_nutrition(db, provider, recipe_id, daily_kcal_goal)
+
+
+@router.get("/{recipe_id}/allergens", response_model=RecipeAllergenCheck)
+async def read_recipe_allergens(
+    recipe_id: int, db: DbSession, catalog: CatalogDep, user: OptionalUser
+) -> RecipeAllergenCheck:
+    """Allergens of the Silpo products behind a recipe's ingredients, checked against the
+    logged-in user's allergies. A product with no data is reported as unknown, never as safe."""
+    return await allergen_service.recipe_allergen_check(db, catalog, recipe_id, user)
