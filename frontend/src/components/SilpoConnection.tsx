@@ -5,10 +5,10 @@ import { useConnectSilpo, useDisconnectSilpo, useSilpoConnection } from '../hook
 const DATE = new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
 
 // The backend callback redirects to /profile?silpo=<outcome> after the login on Silpo's site.
+// Only failures get a notice: on success the connection status below already says so.
 const OUTCOMES = {
-  connected: { text: 'Акаунт Сільпо підключено', failed: false },
-  denied: { text: 'Ви скасували вхід у Сільпо', failed: true },
-  error: { text: 'Не вдалося підключити Сільпо. Спробуйте ще раз.', failed: true },
+  denied: 'Ви скасували вхід у Сільпо',
+  error: 'Не вдалося підключити Сільпо. Спробуйте ще раз.',
 } as const;
 type Outcome = keyof typeof OUTCOMES;
 
@@ -73,11 +73,8 @@ export function SilpoConnection() {
       </h2>
 
       {outcome ? (
-        <p
-          role={OUTCOMES[outcome].failed ? 'alert' : 'status'}
-          className={`text-sm font-medium ${OUTCOMES[outcome].failed ? 'text-accent-600' : 'text-olive-800'}`}
-        >
-          {OUTCOMES[outcome].text}
+        <p role="alert" className="text-accent-600 text-sm font-medium">
+          {OUTCOMES[outcome]}
         </p>
       ) : null}
 
