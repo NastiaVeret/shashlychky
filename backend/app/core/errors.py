@@ -72,6 +72,13 @@ class NutritionUnavailableError(ProductDataUnavailableError):
     detail = "Дані про КБЖВ з Сільпо тимчасово недоступні. Спробуйте пізніше."
 
 
+class SilpoConnectError(AppError):
+    """A user's Silpo login could not be started or finished (Silpo failed, or a stale login)."""
+
+    status_code = 503
+    detail = "Не вдалося підключити Сільпо. Спробуйте ще раз."
+
+
 class LLMInvalidResponseError(AppError):
     """The model answered, but not in the expected structure even after a retry."""
 

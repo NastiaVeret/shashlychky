@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import type { Diet, Equipment, UserProfile } from '../api/profile';
 import { ProductInput } from '../components/ProductInput';
+import { SilpoConnection } from '../components/SilpoConnection';
 import { useDeleteAccount, useMe } from '../hooks/useAuth';
 import { useProfile, useUpdateProfile } from '../hooks/useProfile';
 
@@ -257,6 +258,7 @@ export function ProfilePage() {
         </p>
       ) : null}
       {profile.data ? <ProfileForm initial={profile.data} /> : null}
+      <SilpoConnection />
       <DeleteAccount />
     </div>
   );

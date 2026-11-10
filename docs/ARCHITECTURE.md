@@ -92,6 +92,10 @@ socket. `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `LLM_TIMEOUT_
 | GET | `/api/v1/recipes/{id}/nutrition` | КБЖВ from Silpo product cards, optionally against a daily goal; 503 when Silpo is unavailable |
 | GET | `/api/v1/recipes/{id}/allergens` | allergens of the Silpo products behind the ingredients; with a session, alerts on the user's own allergies; still answers (`silpo_checked=false`) when Silpo is down |
 | GET | `/api/v1/recipes/{id}/shopping-list` | what to buy for the ingredients not at home: product, packs or kg, price, stock, vetted alternatives; 503 when Silpo is unavailable |
+| GET | `/api/v1/silpo/connection` | whether the user's own Silpo account is connected |
+| POST | `/api/v1/silpo/connection` | start the Silpo OAuth login → `authorize_url` for the browser; 503 if Silpo fails |
+| DELETE | `/api/v1/silpo/connection` | forget the user's Silpo tokens → 204 |
+| GET | `/api/v1/silpo/callback` | OAuth redirect target (not in the schema); always 302 to `/profile?silpo=connected\|denied\|error` |
 
 **Silpo product data.** КБЖВ, the allergen check and the shopping list all read the same Silpo product cards, so they
 share one lookup, `ProductCatalog` (`app/integrations/silpo/catalog.py`): one batch search for all ingredients, then the
@@ -289,7 +293,7 @@ Everything a teammate's Claude Code needs lives in the repo:
 
 ## 10. Known limitations and next steps
 
-- Silpo uses one shared OAuth login stored in `silpo_tokens` (row 1), enough for product search and КБЖВ; the cart needs per-user tokens and a web callback route (not built yet). Reconnect procedure: README, "Silpo login".
+- Silpo has two kinds of login. Product search and КБЖВ use one shared service login in `silpo_tokens` (row 1); reconnect procedure: README, "Silpo login". A user connects their own account from the profile page (`silpo_connections`, one row per user, deleted with the account): `app/integrations/silpo/web_auth.py` does discovery, dynamic client registration (reused per redirect URI) and the PKCE code exchange across two requests, because the MCP SDK's in-process flow cannot span a browser redirect; the callback requires the session of the user who started the login and a matching single-use `state` (15 minutes). Afterwards `DbTokenStorage.for_user` hands the tokens to the SDK, which refreshes them. The redirect URI is `PUBLIC_URL` (default: the first `CORS_ORIGINS` entry) + `/api/v1/silpo/callback`.
 - Accounts, a dietary profile and per-user recipe history exist. No password reset and no email
   confirmation: both need an email provider.
 - The recipe-text allergen check is a lexical safety net: it misses allergens hidden in products whose names do not
