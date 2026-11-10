@@ -70,7 +70,7 @@ class OneSession:
         self.silpo = silpo
 
     async def run[T](self, work: Callable[[ProductCatalog], Awaitable[T]]) -> T:
-        return await work(ProductCatalog(self.silpo))  # type: ignore[arg-type]
+        return await work(ProductCatalog(self.silpo))
 
 
 async def main() -> None:
@@ -109,7 +109,7 @@ async def main() -> None:
                 )
 
         print("\n=== алергени ===")
-        catalog = ProductCatalog(counted)  # type: ignore[arg-type]
+        catalog = ProductCatalog(counted)
         names = [i.name for i in RECIPE.ingredients if i.quantity is not None]
         matches = await catalog.match(names)
         for name in names:
