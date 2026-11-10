@@ -141,6 +141,12 @@ async def test_unreadable_package_is_shown_as_silpo_prints_it() -> None:
     assert line.product is not None and line.product.package == "2х150г"
 
 
+async def test_an_empty_pack_is_shown_as_silpo_prints_it() -> None:
+    silpo = FakeSilpo({"Сир": [hit("cheese", displayRatio="0г")]})
+    line = (await lines_for(silpo, need("Сир", 200)))["Сир"]
+    assert line.status == "unknown_package" and line.purchase is None
+
+
 async def test_weighted_product_is_bought_in_kg_by_the_step() -> None:
     sausage = hit("sausage", weighted=True, step=0.65, price=364, displayRatio="100г")
     line = (await lines_for(FakeSilpo({"Ковбаса": [sausage]}), need("Ковбаса", 200)))["Ковбаса"]

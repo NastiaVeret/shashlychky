@@ -199,7 +199,12 @@ class SilpoClient:
     async def search_context(self) -> dict:
         """branchId + deliveryType з кошика, слот - найближчий доступний."""
         _, cart = await self.cart()
-        branch_id = cart["shipments"][0]["branchId"]
+        shipments = cart.get("shipments") if isinstance(cart, dict) else None
+        if not shipments or not isinstance(shipments[0], dict) or not cart.get("deliveryType"):
+            # A fresh account's cart has no store yet: nothing can be searched, and that is
+            # Silpo's state, not a bug of ours.
+            raise SilpoError("silpo_get_shopping_cart_by_id", "У кошику не вибрано магазин")
+        branch_id = shipments[0]["branchId"]
         delivery_type = cart["deliveryType"]
         slots = await self.call(
             "silpo_get_time_slots",

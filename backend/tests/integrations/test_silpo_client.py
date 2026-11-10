@@ -183,6 +183,15 @@ async def test_search_context_without_slots_raises():
         await SilpoClient(s).search_context()
 
 
+@pytest.mark.parametrize("shipments", [[], None])
+async def test_search_context_for_a_cart_without_a_store_raises_silpo_error(shipments):
+    cart = cart_payload(STALE)
+    cart["cart"]["shipments"] = shipments
+    s = session_with(cart, slots_payload(FRESH))
+    with pytest.raises(SilpoError):
+        await SilpoClient(s).search_context()
+
+
 # ---------- call: помилки та ліміти ----------
 
 

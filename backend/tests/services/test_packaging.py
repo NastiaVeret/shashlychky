@@ -48,9 +48,20 @@ def test_parse_pack_reads_silpo_wording(text: str, amount: float, kind: str) -> 
     assert pack is not None and (pack.amount, pack.kind) == (amount, kind)
 
 
-@pytest.mark.parametrize("text", [None, "", "шт", "2х150г", "набір", "5 порцій"])
+@pytest.mark.parametrize(
+    "text", [None, "", "шт", "2х150г", "набір", "5 порцій", "0г", "0шт", "0,0л", "0 кг"]
+)
 def test_parse_pack_refuses_what_it_cannot_read(text: str | None) -> None:
     assert parse_pack(text) is None
+
+
+@pytest.mark.parametrize(
+    ("ing", "ratio"), [(ingredient(300, "г"), "0г"), (ingredient(3, "шт"), "0шт")]
+)
+def test_an_empty_pack_has_no_purchase_instead_of_dividing_by_zero(
+    ing: IngredientRead, ratio: str
+) -> None:
+    assert plan_purchase(ing, product(ratio)) is None
 
 
 # ---------- counted packs: eggs "10шт" ----------

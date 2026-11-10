@@ -62,6 +62,19 @@ class Candidate:
         )
 
 
+def _as_dict(value: object) -> dict[str, Any]:
+    """A reply or a part of it that should be a JSON object; anything else counts as empty."""
+    return value if isinstance(value, dict) else {}
+
+
+def _candidates(hits: object) -> list[Candidate]:
+    """Search hits as candidates. Silpo's replies are not validated anywhere else, so a reply of
+    an unexpected shape is read as "nothing found" instead of failing deep inside our code."""
+    if not isinstance(hits, list):
+        return []
+    return [Candidate.from_search(hit) for hit in hits if isinstance(hit, dict)]
+
+
 @dataclass(frozen=True, slots=True)
 class ProductCard:
     """A candidate plus its detail card (nutrition, allergens, link to the product page)."""
@@ -96,7 +109,7 @@ class ProductCatalog:
         """One batch search for every name, then the card of each name's first available hit."""
         ctx = await self.context()
         found = await self._silpo.find_products(names, limit=CANDIDATES_PER_INGREDIENT, ctx=ctx)
-        candidates = {n: [Candidate.from_search(p) for p in found.get(n, [])] for n in names}
+        candidates = {n: _candidates(_as_dict(found).get(n)) for n in names}
         picks = {n: next((c for c in cs if c.available), None) for n, cs in candidates.items()}
         cards = await self.cards([c for c in picks.values() if c is not None])
         return {
@@ -121,8 +134,13 @@ class ProductCatalog:
                     res = await self._silpo.call(
                         "silpo_get_product_details", {**ctx, "slug": candidate.slug}
                     )
-                card = res.get("product") or {}
-                return ProductCard(candidate, card.get("url"), card.get("attributes") or {})
+                card = _as_dict(_as_dict(res).get("product"))
+                url = card.get("url")
+                return ProductCard(
+                    candidate,
+                    url if isinstance(url, str) else None,
+                    _as_dict(card.get("attributes")),
+                )
 
             results = await asyncio.gather(
                 *(fetch(c) for c in missing.values()), return_exceptions=True
@@ -139,4 +157,4 @@ class ProductCatalog:
         res = await self._silpo.call(
             "silpo_get_similar_products", {**ctx, "slug": candidate.slug, "limit": limit}
         )
-        return [Candidate.from_search(p) for p in res.get("products", [])]
+        return _candidates(_as_dict(res).get("products"))

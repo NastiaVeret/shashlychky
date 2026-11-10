@@ -89,9 +89,19 @@ class ConnectedCatalogProvider:
             if group.subgroup(_EXPECTED) is not None:
                 logger.warning("silpo lookup failed: %s", group)
                 raise self._unavailable() from group
-            raise
+            if not isinstance(group, ExceptionGroup):
+                raise  # holds a cancellation or another BaseException: never swallowed
+            logger.exception("silpo lookup failed on an unexpected error")
+            raise self._unavailable() from group
         except _EXPECTED as exc:
             logger.warning("silpo lookup failed: %s: %s", type(exc).__name__, exc)
+            raise self._unavailable() from exc
+        except ProductDataUnavailableError:
+            raise  # already the clean answer (e.g. from a nested provider), keep its message
+        except Exception as exc:
+            # A Silpo reply we did not foresee (or a bug of ours reading it). The user gets the
+            # same clean 503 as for "Silpo is down"; the traceback stays in the logs.
+            logger.exception("silpo lookup failed on an unexpected error")
             raise self._unavailable() from exc
 
 

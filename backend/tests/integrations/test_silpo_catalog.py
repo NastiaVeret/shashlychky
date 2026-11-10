@@ -118,3 +118,46 @@ async def test_similar_returns_candidates() -> None:
 async def test_candidate_tolerates_a_sparse_search_hit() -> None:
     candidate = Candidate.from_search({"name": "Сир", "slug": "cheese"})
     assert candidate.available is False and candidate.price is None and candidate.stock is None
+
+
+# ---------- replies of an unexpected shape: read as "nothing", never a crash ----------
+
+
+class OddSilpo(FakeSilpo):
+    """Answers the detail and similar tools with whatever `reply` is."""
+
+    def __init__(self, catalogue: dict[str, list[Any]], reply: Any) -> None:
+        super().__init__(catalogue)
+        self.reply = reply
+
+    async def call(self, name: str, args: dict[str, Any] | None = None) -> Any:
+        return self.reply
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        [{"product": {"url": "https://x", "attributes": {"a": 1}}}],  # a JSON list
+        None,
+        {"product": ["not", "an", "object"]},
+        {"product": {"url": 5, "attributes": "Містить алергени: ЯЙЦЯ"}},
+    ],
+)
+async def test_a_malformed_card_is_an_empty_card(reply: Any) -> None:
+    match = (await ProductCatalog(OddSilpo({"a": [hit("a1")]}, reply)).match(["a"]))["a"]
+    assert match.card is not None
+    assert match.card.url is None and match.card.attributes == {}
+
+
+async def test_search_hits_that_are_not_objects_are_skipped() -> None:
+    silpo = OddSilpo({"a": ["junk", None, hit("a1"), 5]}, {"product": {}})
+    match = (await ProductCatalog(silpo).match(["a"]))["a"]
+    assert [c.slug for c in match.candidates] == ["a1"]
+
+
+@pytest.mark.parametrize(
+    "reply", [[hit("alt")], None, {"products": None}, {"products": [None, "x"]}]
+)
+async def test_a_malformed_similar_reply_is_no_alternatives(reply: Any) -> None:
+    similar = await ProductCatalog(OddSilpo({}, reply)).similar(Candidate.from_search(hit("milk")))
+    assert similar == []

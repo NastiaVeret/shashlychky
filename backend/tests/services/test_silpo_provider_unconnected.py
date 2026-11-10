@@ -4,6 +4,8 @@ The MCP SDK wraps errors raised in its auth callbacks into an ExceptionGroup; th
 mapping that turns it back into NutritionUnavailableError.
 """
 
+import asyncio
+
 import pytest
 
 from app.core.errors import NutritionUnavailableError
@@ -46,11 +48,23 @@ async def test_missing_login_is_service_unavailable(
     assert "не підключено" in caught.value.detail
 
 
-async def test_unrelated_error_group_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        catalog, "connect", _RaisingConnect(ExceptionGroup("boom", [KeyError("x")]))
-    )
+async def test_unrelated_error_group_is_a_503_that_keeps_the_original(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group = ExceptionGroup("boom", [KeyError("x")])
+    monkeypatch.setattr(catalog, "connect", _RaisingConnect(group))
     monkeypatch.setattr(catalog, "get_sessionmaker", lambda: None)
 
-    with pytest.raises(ExceptionGroup):
+    with pytest.raises(NutritionUnavailableError) as caught:
+        await ConnectedSilpoProvider("https://mcp.silpo.ua/mcp").lookup(["яйця"])
+
+    assert caught.value.__cause__ is group  # chained (and logged), not swallowed
+
+
+async def test_a_cancelled_group_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    group = BaseExceptionGroup("boom", [asyncio.CancelledError(), KeyError("x")])
+    monkeypatch.setattr(catalog, "connect", _RaisingConnect(group))
+    monkeypatch.setattr(catalog, "get_sessionmaker", lambda: None)
+
+    with pytest.raises(BaseExceptionGroup):
         await ConnectedSilpoProvider("https://mcp.silpo.ua/mcp").lookup(["яйця"])

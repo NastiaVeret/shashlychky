@@ -1,6 +1,8 @@
 """ConnectedCatalogProvider: every way Silpo can fail ends in a 503, a slow Silpo cannot hang."""
 
 import asyncio
+import logging
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -125,3 +127,58 @@ async def test_persistent_http_429_ends_in_unavailable(
         await ConnectedCatalogProvider("https://mcp.test/mcp").run(lambda c: c.context())
 
     assert len(attempts) == 3  # first try plus the two retries, then it gives up
+
+
+# ---------- a reply we did not foresee: a clean 503, never a 500 ----------
+
+
+def _fails_with(exc: BaseException) -> Callable[[ProductCatalog], Awaitable[None]]:
+    async def work(catalog: ProductCatalog) -> None:
+        raise exc
+
+    return work
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        AttributeError("'list' object has no attribute 'get'"),
+        KeyError("shipments"),
+        ZeroDivisionError("float division by zero"),
+        # the MCP transport's task group, sometimes nested in another one
+        ExceptionGroup("tg", [AttributeError("'list' object has no attribute 'get'")]),
+        ExceptionGroup("outer", [ExceptionGroup("inner", [TypeError("list indices")])]),
+    ],
+)
+async def test_an_unexpected_error_becomes_unavailable_and_is_logged(
+    silpo: SlowOrBrokenSilpo, caplog: pytest.LogCaptureFixture, error: Exception
+) -> None:
+    with caplog.at_level(logging.ERROR), pytest.raises(ProductDataUnavailableError):
+        await ConnectedCatalogProvider("https://x").run(_fails_with(error))
+
+    # logged with the traceback, so the bug behind it stays visible
+    (record,) = [r for r in caplog.records if r.name == catalog_service.logger.name]
+    assert record.exc_info is not None
+
+
+async def test_an_unexpected_error_keeps_the_providers_own_message(
+    silpo: SlowOrBrokenSilpo,
+) -> None:
+    with pytest.raises(NutritionUnavailableError):
+        await ConnectedCatalogProvider("https://x", NutritionUnavailableError).run(
+            _fails_with(AttributeError("boom"))
+        )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        asyncio.CancelledError(),
+        BaseExceptionGroup("tg", [asyncio.CancelledError(), AttributeError("boom")]),
+    ],
+)
+async def test_cancellation_is_never_swallowed(
+    silpo: SlowOrBrokenSilpo, error: BaseException
+) -> None:
+    with pytest.raises(type(error)):
+        await ConnectedCatalogProvider("https://x").run(_fails_with(error))

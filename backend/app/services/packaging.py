@@ -28,10 +28,12 @@ class Pack:
 
 
 def parse_pack(display_ratio: str | None) -> Pack | None:
-    """ "870г" -> 870 g, "1,5л" -> 1500 ml, "10шт" -> 10 pieces; multipacks, text -> None."""
+    """ "870г" -> 870 g, "1,5л" -> 1500 ml, "10шт" -> 10 pieces; multipacks, text, "0г" -> None."""
     if not display_ratio or not (m := _PACK.match(display_ratio)):
         return None
     amount, unit = float(m.group(1).replace(",", ".")), m.group(2).lower()
+    if amount <= 0:  # "0г": nothing honest to divide by
+        return None
     if unit == "шт":
         return Pack(amount, "count")
     return Pack(amount * _PACK_FACTOR[unit], "weight" if unit in ("г", "кг") else "volume")
