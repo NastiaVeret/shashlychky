@@ -120,6 +120,21 @@ make check-frontend # oxlint, prettier, tsc + vite build
 make types-check    # generated types match the backend schema
 ```
 
+## LLM evals and stability
+
+The model is measured, not trusted. `backend/evals/` holds the dataset of inputs that have made it misbehave and
+the checks for what a good answer looks like:
+
+```bash
+make eval                   # offline: scripted model answers (broken JSON, invented unit, timeout,
+                            # 503) replayed through the real client. Free, no key, runs in CI.
+make eval-live REPEATS=5    # the real model, each case repeated; writes docs/eval-report.md
+```
+
+Each live case is repeated because an LLM that answers correctly once may not answer correctly five times; the
+report separates "always wrong" from "sometimes wrong". The measured result is in
+[docs/STABILITY.md](docs/STABILITY.md).
+
 ## Deployment
 
 | Part | Where | How |

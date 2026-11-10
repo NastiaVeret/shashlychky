@@ -45,11 +45,13 @@ _UNIT_ALIASES: dict[str, Unit] = {
     "г": Unit.GRAM,
     "гр": Unit.GRAM,
     "грам": Unit.GRAM,
+    "грама": Unit.GRAM,
     "грами": Unit.GRAM,
     "грамів": Unit.GRAM,
     "g": Unit.GRAM,
     "мл": Unit.MILLILITER,
     "мілілітр": Unit.MILLILITER,
+    "мілілітра": Unit.MILLILITER,
     "мілілітри": Unit.MILLILITER,
     "мілілітрів": Unit.MILLILITER,
     "ml": Unit.MILLILITER,
@@ -98,11 +100,13 @@ _UNIT_ALIASES: dict[str, Unit] = {
 _SCALED_UNITS: dict[str, tuple[Unit, float]] = {
     "кг": (Unit.GRAM, 1000),
     "кілограм": (Unit.GRAM, 1000),
+    "кілограма": (Unit.GRAM, 1000),
     "кілограми": (Unit.GRAM, 1000),
     "кілограмів": (Unit.GRAM, 1000),
     "kg": (Unit.GRAM, 1000),
     "л": (Unit.MILLILITER, 1000),
     "літр": (Unit.MILLILITER, 1000),
+    "літра": (Unit.MILLILITER, 1000),
     "літри": (Unit.MILLILITER, 1000),
     "літрів": (Unit.MILLILITER, 1000),
     "l": (Unit.MILLILITER, 1000),
@@ -123,6 +127,12 @@ _STEP_NUMBERING = re.compile(r"^\s*\d{1,2}[.)]\s+")
 def _unit_key(raw: str) -> str:
     """Fold a written unit to its comparable form: lowercase letters and digits only."""
     return "".join(ch for ch in raw.casefold() if ch.isalnum())
+
+
+def is_unit_word(word: str) -> bool:
+    """Is this word a measurement unit in any of its spellings ("кг", "ст.л.", "склянки")?"""
+    key = _unit_key(word)
+    return key in _UNIT_ALIASES or key in _SCALED_UNITS
 
 
 def normalize_product_names(products: list[str]) -> list[str]:

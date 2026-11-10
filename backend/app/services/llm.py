@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Annotated, Protocol
 
+import httpx
 from fastapi import Depends
 from google import genai
 from google.genai import errors as genai_errors
@@ -35,6 +36,8 @@ class LLMResult[T: BaseModel]:
     prompt_tokens: int | None
     output_tokens: int | None
     latency_ms: int
+    attempts: int = 1
+    """How many model calls it took to get a valid object. >1 means a corrective retry fired."""
 
 
 class StructuredLLM(Protocol):
@@ -120,6 +123,7 @@ class GeminiLLM:
                 prompt_tokens=prompt_tokens,
                 output_tokens=output_tokens,
                 latency_ms=latency_ms,
+                attempts=attempt + 1,
             )
 
         raise LLMInvalidResponseError() from last_error
@@ -144,10 +148,12 @@ class GeminiLLM:
             try:
                 async with asyncio.timeout(s.llm_timeout_seconds + 1):
                     response = await self._client.aio.models.generate_content(
-                        model=name, contents=contents, config=config
+                        model=name, contents=contents, config=self._config_for(name, config)
                     )
                 return response, name
-            except (TimeoutError, genai_errors.ServerError) as exc:
+            # httpx errors are not asyncio.TimeoutError: the SDK's own HTTP deadline fires
+            # before ours, and an uncaught ReadTimeout here would be a 500 instead of a 503.
+            except (TimeoutError, httpx.TransportError, genai_errors.ServerError) as exc:
                 last_exc = exc
                 logger.warning(
                     "llm slow/unavailable model=%s error=%s: %s", name, type(exc).__name__, exc
@@ -160,6 +166,19 @@ class GeminiLLM:
                 logger.error("llm client error model=%s code=%s", name, exc.code)
                 raise LLMInvalidResponseError() from exc
         raise LLMUnavailableError() from last_exc
+
+    def _config_for(
+        self, model: str, config: types.GenerateContentConfig
+    ) -> types.GenerateContentConfig:
+        """`thinking_budget=0` is only known to work on the primary model.
+
+        The fallback (a newer Flash-Lite) answers 400 INVALID_ARGUMENT to it, which used to turn
+        every slow primary into a 502 for the user. Outside the primary we leave the provider
+        defaults alone: a working answer beats the few tokens thinking costs on a rare fallback.
+        """
+        if model == self._settings.gemini_model:
+            return config
+        return config.model_copy(update={"thinking_config": None})
 
     @staticmethod
     def _parse[T: BaseModel](response: types.GenerateContentResponse, schema: type[T]) -> T:

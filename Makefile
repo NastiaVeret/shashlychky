@@ -7,12 +7,13 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 export DB_PORT ?= 5432
+REPEATS ?= 3                              # how many times `make eval-live` repeats each case
 OPENAPI_TS := openapi-typescript@7.13.0   # pinned; not in package.json because it peers on TS 5.x
 SCHEMA := frontend/src/api/schema.d.ts
 OPENAPI_JSON := frontend/src/api/openapi.json
 
 .PHONY: help install dev db db-stop backend frontend migrate migration seed silpo-mock types types-check \
-        check check-backend check-frontend test test-backend format lint eval clean
+        check check-backend check-frontend test test-backend format lint eval eval-live clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -75,7 +76,7 @@ format: ## Format all code (ruff, prettier)
 	cd frontend && npm run format
 
 lint: ## Lint + typecheck without tests
-	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app scripts
+	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app scripts evals
 	cd frontend && npm run lint && npm run format:check && npm run typecheck
 
 test-backend: ## Backend tests (DB tests skip if Postgres is not running)
@@ -84,12 +85,18 @@ test-backend: ## Backend tests (DB tests skip if Postgres is not running)
 test: test-backend ## All tests
 
 check-backend: ## Everything CI runs for the backend
-	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app scripts && uv run pytest -q
+	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app scripts evals && uv run pytest -q
 
 check-frontend: ## Everything CI runs for the frontend
 	cd frontend && npm run lint && npm run format:check && npm run build
 
 check: check-backend check-frontend types-check ## Everything CI runs
+
+eval: ## LLM eval suite, offline: scripted answers through the real client (free, runs in CI)
+	cd backend && uv run python -m evals
+
+eval-live: ## LLM eval against the real model: make eval-live REPEATS=5 (needs GEMINI_API_KEY, costs)
+	cd backend && uv run python -m evals --live --repeats $(REPEATS) --out ../docs/eval-report.md
 
 clean: ## Remove build artifacts and caches
 	rm -rf frontend/dist backend/.pytest_cache backend/.mypy_cache backend/.ruff_cache
