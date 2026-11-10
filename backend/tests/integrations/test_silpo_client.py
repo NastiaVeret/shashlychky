@@ -183,6 +183,15 @@ async def test_search_context_without_slots_raises():
         await SilpoClient(s).search_context()
 
 
+@pytest.mark.parametrize("shipments", [[], None])
+async def test_search_context_for_a_cart_without_a_store_raises_silpo_error(shipments):
+    cart = cart_payload(STALE)
+    cart["cart"]["shipments"] = shipments
+    s = session_with(cart, slots_payload(FRESH))
+    with pytest.raises(SilpoError):
+        await SilpoClient(s).search_context()
+
+
 # ---------- call: помилки та ліміти ----------
 
 
@@ -235,6 +244,42 @@ async def test_ordinary_errors_are_not_retried(text, no_sleep):
     with pytest.raises(SilpoError):
         await SilpoClient(s).call("x")
     assert no_sleep == []
+
+
+async def test_unreadable_reply_to_a_read_is_retried_once(no_sleep):
+    s = Session(x=[Result("<html>oops</html>"), Result({"ok": 1})])
+    assert await SilpoClient(s).call("x") == {"ok": 1}
+    assert len(s.calls) == 2 and no_sleep == [1]
+
+
+async def test_unreadable_reply_to_a_read_gives_up_after_one_retry(no_sleep):
+    s = Session(x=Result("<html>oops</html>"))
+    with pytest.raises(SilpoError):
+        await SilpoClient(s).call("x")
+    assert len(s.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "silpo_add_cart_products",
+        "silpo_update_cart_products",
+        "silpo_remove_cart_products",
+        "silpo_update_shopping_cart",
+    ],
+)
+async def test_unreadable_reply_to_a_cart_write_is_never_retried(tool, no_sleep):
+    s = Session(**{tool: Result("<html>oops</html>")})
+    with pytest.raises(SilpoError):
+        await SilpoClient(s).call(tool)
+    assert len(s.calls) == 1 and no_sleep == []
+
+
+async def test_rate_limit_text_is_logged_to_learn_the_real_wording(caplog, no_sleep):
+    s = Session(x=[Result("Ліміт запитів вичерпано: забагато запитів", is_error=True), Result({})])
+    with caplog.at_level("WARNING"):
+        await SilpoClient(s).call("x")
+    assert "Ліміт запитів вичерпано" in caplog.text
 
 
 # ---------- add / quantity / remove на підробній сесії ----------

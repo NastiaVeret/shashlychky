@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  allergenKeys,
   createRecipe,
   getMyRecipes,
   getRecipe,
+  getRecipeAllergens,
   getRecipeNutrition,
+  getRecipeShoppingList,
   nutritionKeys,
   recipeKeys,
+  shoppingKeys,
 } from '../api/recipes';
 
 export function useCreateRecipe() {
@@ -44,6 +48,27 @@ export function useRecipeNutrition(id: number, enabled: boolean) {
     queryFn: ({ signal }) => getRecipeNutrition(id, signal),
     staleTime: 5 * 60 * 1000, // Silpo product data changes rarely
     retry: false, // 503 when Silpo is not configured or down: say so, do not hammer it
+    enabled: enabled && Number.isFinite(id) && id > 0,
+  });
+}
+
+/** Allergens of the Silpo products behind the ingredients. A second step, like КБЖВ. */
+export function useRecipeAllergens(id: number, enabled: boolean) {
+  return useQuery({
+    queryKey: allergenKeys.detail(id),
+    queryFn: ({ signal }) => getRecipeAllergens(id, signal),
+    retry: false, // the backend already degrades when Silpo is down; do not hammer it
+    enabled: enabled && Number.isFinite(id) && id > 0,
+  });
+}
+
+/** What to buy at Silpo for the ingredients the user does not have. A second step too. */
+export function useRecipeShoppingList(id: number, enabled: boolean) {
+  return useQuery({
+    queryKey: shoppingKeys.detail(id),
+    queryFn: ({ signal }) => getRecipeShoppingList(id, signal),
+    staleTime: 60 * 1000, // stock and prices change; a minute is enough to avoid re-asking on re-render
+    retry: false, // 503 when Silpo is not configured or down: say so
     enabled: enabled && Number.isFinite(id) && id > 0,
   });
 }

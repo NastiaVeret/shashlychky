@@ -89,10 +89,28 @@ socket. `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `LLM_TIMEOUT_
 | GET | `/api/v1/me/recipes` | the user's recipes, newest first (`limit` ≤ 50, `offset`) |
 | POST | `/api/v1/recipes` | generate and store a recipe from products, servings, preferences → 201; with a session, applies the profile and links the recipe to the user |
 | GET | `/api/v1/recipes/{id}` | read a stored recipe |
+| GET | `/api/v1/recipes/{id}/nutrition` | КБЖВ from Silpo product cards, optionally against a daily goal; 503 when Silpo is unavailable |
+| GET | `/api/v1/recipes/{id}/allergens` | allergens of the Silpo products behind the ingredients; with a session, alerts on the user's own allergies; still answers (`silpo_checked=false`) when Silpo is down |
+| GET | `/api/v1/recipes/{id}/shopping-list` | what to buy for the ingredients not at home: product, packs or kg, price, stock, vetted alternatives; 503 when Silpo is unavailable |
 | GET | `/api/v1/silpo/connection` | whether the user's own Silpo account is connected |
 | POST | `/api/v1/silpo/connection` | start the Silpo OAuth login → `authorize_url` for the browser; 503 if Silpo fails |
 | DELETE | `/api/v1/silpo/connection` | forget the user's Silpo tokens → 204 |
 | GET | `/api/v1/silpo/callback` | OAuth redirect target (not in the schema); always 302 to `/profile?silpo=connected\|denied\|error` |
+
+**Silpo product data.** КБЖВ, the allergen check and the shopping list all read the same Silpo product cards, so they
+share one lookup, `ProductCatalog` (`app/integrations/silpo/catalog.py`): one batch search for all ingredients, then the
+cards of the picks, at most 3 in parallel (Silpo answers 0.2 s to one search but 4.2 s when 40 run at once), the store and
+delivery slot fetched once. It is memoised per instance, i.e. per request, and never builds a catalogue of Silpo's range
+(its terms forbid mass collection). `ConnectedCatalogProvider` (`app/services/catalog.py`) opens one MCP session per request,
+enforces a 25 s deadline for everything the request asks Silpo and turns every failure (not connected, error, slow)
+into `ProductDataUnavailableError` (503). A non-JSON reply to a read is retried once, a cart write never; the raw text
+of any rate-limit reply is logged, because the real wording of Silpo's 429 has never been seen.
+`app/services/packaging.py` turns recipe amounts into packs or kg and refuses to guess: when the package text ("2х150г")
+or the unit cannot be converted, the line is `unknown_package` and Silpo's own package wording is shown instead.
+Millilitres and pieces go through `app/services/units.py`: a table of densities (g/ml: a cup of flour is ~130 g, not 250)
+and of average piece weights (a tomato ~120 g). Densities of flour, sugar, powdered sugar, honey, oil, milk, sour cream, rice, salt, cocoa and cornstarch, and weights of tomato, onion, carrot, egg, pepper, apple, banana and lemon, were checked against USDA FoodData Central (2026-11-10); the rest are typical kitchen values, as are potato, cucumber, beet, eggplant, zucchini and orange, which USDA lists much bigger (US produce). Good to roughly ±15 %; every
+result carries its basis (`exact`, `density`, `density_assumed` = unknown product counted as water, `piece_weight`) and
+`Purchase.estimated`, so the UI shows "≈". КБЖВ uses the same conversions.
 
 Input validation (`RecipeRequest`): 1–30 products, each trimmed and capped at 40 characters, de-duplicated
 case-insensitively; servings 1–12; preferences ≤ 200 characters.
@@ -278,8 +296,16 @@ Everything a teammate's Claude Code needs lives in the repo:
 - Silpo has two kinds of login. Product search and КБЖВ use one shared service login in `silpo_tokens` (row 1); reconnect procedure: README, "Silpo login". A user connects their own account from the profile page (`silpo_connections`, one row per user, deleted with the account): `app/integrations/silpo/web_auth.py` does discovery, dynamic client registration (reused per redirect URI) and the PKCE code exchange across two requests, because the MCP SDK's in-process flow cannot span a browser redirect; the callback requires the session of the user who started the login and a matching single-use `state` (15 minutes). Afterwards `DbTokenStorage.for_user` hands the tokens to the SDK, which refreshes them. The redirect URI is `PUBLIC_URL` (default: the first `CORS_ORIGINS` entry) + `/api/v1/silpo/callback`.
 - Accounts, a dietary profile and per-user recipe history exist. No password reset and no email
   confirmation: both need an email provider.
-- The allergen check is a lexical safety net, not a guarantee: it misses allergens hidden in products
-  whose names do not mention them. The footer disclaimer stays.
+- The recipe-text allergen check is a lexical safety net: it misses allergens hidden in products whose names do not
+  mention them. `/recipes/{id}/allergens` adds the product side: Silpo's "Містить алергени" card attribute (present
+  for only some products), then a short dictionary of what a product type usually contains (a hint, `likely`). A
+  product with neither is `unknown`, never "safe". It only warns; it does not block a recipe (team decision,
+  2026-11-09: revisit after real use). The UI wording is fixed: with data from the card, "Попередження: алергени <список>"; without, "Попередження: можливі алергени"; both ask the user to check the label themselves. No external source is used: Open Food Facts matched 0 of 7 real Silpo products (the card has no barcode, Ukrainian coverage there is thin) and was removed. Idea not built: the card's photo gallery often has a sharp crop of the pack's ingredient text, which a vision model could read. The footer disclaimer stays.
+- The shopping list shows Silpo's package text as received and converts only unambiguous cases; densities and
+  piece weights are approximations (see above), not measurements, and unlisted products fall back to water or to
+  "unknown". Choosing the best
+  substitute for an out-of-stock product is not decided here: alternatives come in a plain order (enough stock first),
+  each already vetted against the user's allergies. Adding the list to a cart needs per-user Silpo tokens (above).
 - No rate limiting on `POST /recipes`; the only guard is input size. Add per-IP limits before public promotion.
 - No eval set for recipe quality; the deck plans 50–100 reference recipes in CI.
 - Cold starts: `min-instances=0` saves money but adds a few seconds to the first request after idle.

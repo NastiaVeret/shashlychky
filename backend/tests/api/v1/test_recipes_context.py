@@ -5,7 +5,7 @@ from app.api.deps import SESSION_COOKIE
 from app.schemas.recipes import Ingredient, RecipeContent
 from app.services.recipes import RECENT_TITLES_LIMIT
 from tests.api.v1.test_auth import register, unique_email
-from tests.conftest import SAMPLE_RECIPE, FakeLLM
+from tests.conftest import SAMPLE_RECIPE, FakeCatalogProvider, FakeLLM
 
 # SAMPLE_RECIPE (the FakeLLM default) is an omelette with eggs, tomato and salt.
 EGG_FREE_RECIPE = RecipeContent(
@@ -181,3 +181,30 @@ async def test_my_recipes_do_not_leak_between_users(
 
     assert other.status_code == 200
     assert mine not in [r["id"] for r in other.json()]
+
+
+async def test_allergen_check_alerts_on_the_users_own_allergies(
+    client: AsyncClient, fake_llm: FakeLLM, fake_catalog: FakeCatalogProvider, logged_in: None
+) -> None:
+    # "молоко" is not in the omelette, but Silpo says the eggs may contain traces of it
+    await save_profile(client, allergies=["молоко"])
+    created = (await client.post("/api/v1/recipes", json={"products": ["яйця"]})).json()
+
+    body = (await client.get(f"/api/v1/recipes/{created['id']}/allergens")).json()
+
+    assert body["profile_applied"] is True and body["has_alerts"] is True
+    eggs = next(r for r in body["ingredients"] if r["name"] == "Яйця")
+    assert eggs["alerts"] == [{"allergy": "молоко", "level": "traces"}]
+
+
+async def test_allergen_check_treats_a_lactose_free_diet_as_a_milk_allergy(
+    client: AsyncClient, fake_llm: FakeLLM, fake_catalog: FakeCatalogProvider, logged_in: None
+) -> None:
+    # no allergies listed, only the diet: the traces of milk on the eggs still warn
+    await save_profile(client, diets=["lactose_free"])
+    created = (await client.post("/api/v1/recipes", json={"products": ["яйця"]})).json()
+
+    body = (await client.get(f"/api/v1/recipes/{created['id']}/allergens")).json()
+
+    eggs = next(r for r in body["ingredients"] if r["name"] == "Яйця")
+    assert eggs["alerts"] == [{"allergy": "молоко", "level": "traces"}]

@@ -57,6 +57,15 @@ class NoDeliverySlotsError(SilpoError):
 
 RATE_LIMIT = re.compile(r"429|rate.?limit|too many|забагато", re.IGNORECASE)
 RETRY_DELAYS = (1, 2, 4)  # секунди; експоненціальна пауза при ліміті запитів
+# Tools that change the cart. A reply we cannot read must never trigger a blind second write.
+WRITE_TOOLS = frozenset(
+    {
+        "silpo_add_cart_products",
+        "silpo_update_cart_products",
+        "silpo_remove_cart_products",
+        "silpo_update_shopping_cart",
+    }
+)
 
 
 async def _no_browser(url: str) -> None:
@@ -131,13 +140,18 @@ class SilpoClient:
     async def call(self, name: str, args: dict | None = None) -> dict:
         """Викликає tool і розбирає JSON. При ліміті запитів (429) повторює з паузою 1/2/4 с.
         Ліміт розпізнається за текстом і в відповіді tool'а, і у винятку (як саме його віддає
-        реальний сервер, невідомо). Решта винятків і помилок пробиваються одразу."""
+        реальний сервер, невідомо: сирий текст пишемо в лог, щоб це нарешті побачити).
+        Читаючий tool, що відповів не-JSON, повторюється один раз; запис у кошик ніколи.
+        Решта винятків і помилок пробиваються одразу."""
+        malformed_retried = False
         for delay in (*RETRY_DELAYS, None):
             try:
                 result = await self.session.call_tool(name, args or {})
             except (McpError, httpx.HTTPStatusError) as e:
                 if delay is not None and _is_rate_limit(e):
-                    logger.warning("silpo rate limited on %s, retrying in %ss", name, delay)
+                    logger.warning(
+                        "silpo rate limited on %s, retrying in %ss: %s", name, delay, str(e)[:300]
+                    )
                     await asyncio.sleep(delay)
                     continue
                 raise
@@ -149,7 +163,23 @@ class SilpoClient:
             if data is not None and not result.isError:
                 return data
             if delay is not None and RATE_LIMIT.search(text):
+                logger.warning(
+                    "silpo rate limited on %s, retrying in %ss: %s", name, delay, text[:300]
+                )
                 await asyncio.sleep(delay)
+                continue
+            if (
+                delay is not None
+                and data is None
+                and not result.isError
+                and name not in WRITE_TOOLS
+                and not malformed_retried
+            ):
+                malformed_retried = True
+                logger.warning(
+                    "silpo answered %s with non-JSON, retrying once: %s", name, text[:300]
+                )
+                await asyncio.sleep(RETRY_DELAYS[0])
                 continue
             raise SilpoError(name, text)
         raise AssertionError("unreachable: the retry loop returns or raises")
@@ -169,7 +199,12 @@ class SilpoClient:
     async def search_context(self) -> dict:
         """branchId + deliveryType з кошика, слот - найближчий доступний."""
         _, cart = await self.cart()
-        branch_id = cart["shipments"][0]["branchId"]
+        shipments = cart.get("shipments") if isinstance(cart, dict) else None
+        if not shipments or not isinstance(shipments[0], dict) or not cart.get("deliveryType"):
+            # A fresh account's cart has no store yet: nothing can be searched, and that is
+            # Silpo's state, not a bug of ours.
+            raise SilpoError("silpo_get_shopping_cart_by_id", "У кошику не вибрано магазин")
+        branch_id = shipments[0]["branchId"]
         delivery_type = cart["deliveryType"]
         slots = await self.call(
             "silpo_get_time_slots",
@@ -242,8 +277,11 @@ class SilpoClient:
             for v in cart["calculation"]["validations"]
         )
 
-    async def find_products(self, names: list[str], limit: int = 3) -> dict[str, list[dict]]:
-        ctx = await self.search_context()
+    async def find_products(
+        self, names: list[str], limit: int = 3, ctx: dict | None = None
+    ) -> dict[str, list[dict]]:
+        """`ctx` is a result of `search_context()`: pass it when several calls share one."""
+        ctx = ctx or await self.search_context()
         found = await self.call(
             "silpo_find_products_batch", {**ctx, "products": names, "limit": limit}
         )

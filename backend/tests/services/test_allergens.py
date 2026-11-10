@@ -59,6 +59,48 @@ def test_find_allergens_ignores_unrelated_words(allergy: str, text: str) -> None
     assert find_allergens([allergy], [text]) == []
 
 
+@pytest.mark.parametrize(
+    ("allergy", "text"),
+    [
+        ("глютен", "ПШЕНИЦЯ"),
+        ("глютен", "борошно житнє"),
+        ("глютен", "ячмінна крупа"),
+        ("глютен", "вівсяні пластівці"),
+        ("глютен", "овес"),
+        ("глютен", "спельта"),
+        ("горіхи", "фундук"),
+        ("горіхи", "мигдаль"),
+        ("горіхи", "кешью"),
+        ("горіхи", "фісташки"),
+        ("горіхи", "пекан"),
+        ("горіхи", "волоські"),
+        ("горіхи", "арахіс"),
+        ("лактоза", "МОЛОКО"),
+        ("лактоза", "сухе молочне"),
+        ("морепродукти", "ракоподібні"),
+        ("морепродукти", "молюски"),
+        ("морепродукти", "креветок"),
+    ],
+)
+def test_an_allergen_group_matches_its_members(allergy: str, text: str) -> None:
+    # labels name the source ("пшениця"), people name the group ("глютен")
+    assert find_allergens([allergy], [text]) == [allergy]
+
+
+@pytest.mark.parametrize(
+    ("allergy", "text"),
+    [
+        ("глютен", "життя"),
+        ("глютен", "житло"),
+        ("лактоза", "перець молотий"),
+        ("горіхи", "горілка"),
+        ("пшениця", "овес"),  # a member does not stand for the whole group
+    ],
+)
+def test_an_allergen_group_does_not_reach_lookalikes(allergy: str, text: str) -> None:
+    assert find_allergens([allergy], [text]) == []
+
+
 def test_recipe_texts_cover_every_field_an_allergen_can_hide_in() -> None:
     content = RecipeContent(
         title="Омлет з сиром",

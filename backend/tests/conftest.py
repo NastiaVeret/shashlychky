@@ -1,15 +1,17 @@
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from app.core.errors import LLMUnavailableError
+from app.core.errors import LLMUnavailableError, ProductDataUnavailableError
 from app.db.session import get_engine
+from app.integrations.silpo.catalog import Candidate, IngredientMatch, ProductCard, ProductCatalog
 from app.main import app
 from app.schemas.nutrition import NutritionFacts
 from app.schemas.recipes import Ingredient, RecipeContent, Unit
+from app.services.catalog import get_catalog_provider
 from app.services.llm import LLMResult, get_llm
 from app.services.nutrition import ProductNutrition, get_nutrition_provider
 
@@ -71,6 +73,74 @@ SAMPLE_NUTRITION = {
         package_grams=150,
     ),
 }
+
+
+def product_match(
+    name: str,
+    attributes: dict[str, object],
+    *,
+    url: str = "https://silpo.ua/product/p",
+    price: float = 138.03,
+) -> IngredientMatch:
+    """An ingredient matched to one available Silpo product whose card has these attributes."""
+    candidate = Candidate(
+        product_id=f"id-{name}",
+        name=f"{name} (Сільпо)",
+        slug=f"slug-{name}",
+        price=price,
+        stock=5,
+        available=True,
+        weighted=False,
+        step=1,
+        display_ratio="10шт",
+    )
+    return IngredientMatch(name, [candidate], ProductCard(candidate, url, dict(attributes)))
+
+
+# Eggs declare allergens (eggs; traces of milk), the tomato card says nothing, salt is not found
+SAMPLE_MATCHES = {
+    "Яйця": product_match("Яйця", {"Містить алергени": "ЯЙЦЯ. Може містити сліди: МОЛОКО."}),
+    "Помідор": product_match("Помідор", {"Країна": "Україна", "Торгова марка": "Бренд"}),
+}
+
+
+class FakeCatalogProvider:
+    """Stand-in for the Silpo catalogue: `run` hands the work a catalogue answering from a map."""
+
+    def __init__(
+        self, matches: dict[str, IngredientMatch] | None = None, *, down: bool = False
+    ) -> None:
+        self.matches = matches or {}
+        self.down = down
+        self.calls: list[list[str]] = []
+
+    async def run[T](self, work: Callable[[ProductCatalog], Awaitable[T]]) -> T:
+        if self.down:
+            raise ProductDataUnavailableError()
+        provider = self
+
+        class _Catalog:
+            async def match(self, names: list[str]) -> dict[str, IngredientMatch]:
+                provider.calls.append(names)
+                return {n: provider.matches.get(n, IngredientMatch(n, [], None)) for n in names}
+
+        return await work(_Catalog())  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def fake_catalog() -> Iterator[FakeCatalogProvider]:
+    provider = FakeCatalogProvider(SAMPLE_MATCHES)
+    app.dependency_overrides[get_catalog_provider] = lambda: provider
+    yield provider
+    app.dependency_overrides.pop(get_catalog_provider, None)
+
+
+@pytest.fixture
+def down_catalog() -> Iterator[FakeCatalogProvider]:
+    provider = FakeCatalogProvider(down=True)
+    app.dependency_overrides[get_catalog_provider] = lambda: provider
+    yield provider
+    app.dependency_overrides.pop(get_catalog_provider, None)
 
 
 @pytest.fixture

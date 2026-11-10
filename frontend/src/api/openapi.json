@@ -612,6 +612,124 @@
         }
       }
     },
+    "/api/v1/recipes/{recipe_id}/allergens": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "Read Recipe Allergens",
+        "description": "Allergens of the Silpo products behind a recipe's ingredients, checked against the\nlogged-in user's allergies. A product with no data is reported as unknown, never as safe.",
+        "operationId": "read_recipe_allergens_api_v1_recipes__recipe_id__allergens_get",
+        "parameters": [
+          {
+            "name": "recipe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Recipe Id"
+            }
+          },
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeAllergenCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recipes/{recipe_id}/shopping-list": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "Read Recipe Shopping List",
+        "description": "What to buy at Silpo for the ingredients the user does not have: product, packs or kg,\nprice, and vetted alternatives when a product is out of stock or short.",
+        "operationId": "read_recipe_shopping_list_api_v1_recipes__recipe_id__shopping_list_get",
+        "parameters": [
+          {
+            "name": "recipe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Recipe Id"
+            }
+          },
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeShoppingList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/silpo/connection": {
       "get": {
         "tags": [
@@ -754,6 +872,162 @@
   },
   "components": {
     "schemas": {
+      "AllergenAlert": {
+        "properties": {
+          "allergy": {
+            "type": "string",
+            "title": "Allergy",
+            "description": "Алерген з профілю користувача, який збігся"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "contains",
+              "traces",
+              "likely"
+            ],
+            "title": "Level"
+          }
+        },
+        "type": "object",
+        "required": [
+          "allergy",
+          "level"
+        ],
+        "title": "AllergenAlert"
+      },
+      "Alternative": {
+        "properties": {
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Сторінка товару в Сільпо"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price",
+            "description": "Ціна за упаковку, а для вагових товарів за кг"
+          },
+          "stock": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock",
+            "description": "Залишок: упаковок, а для вагових товарів кг"
+          },
+          "weighted": {
+            "type": "boolean",
+            "title": "Weighted"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "description": "Мінімальний крок: упаковок, а для вагових кг"
+          },
+          "package": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package",
+            "description": "Що в одній упаковці, як віддає Сільпо: «870г», «10шт». Без перетворень"
+          },
+          "enough_stock": {
+            "type": "boolean",
+            "title": "Enough Stock",
+            "description": "Чи вистачає цього товару на рецепт"
+          },
+          "purchase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Purchase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allergen_source": {
+            "type": "string",
+            "enum": [
+              "declared",
+              "likely",
+              "unknown"
+            ],
+            "title": "Allergen Source"
+          },
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AllergenAlert"
+            },
+            "type": "array",
+            "title": "Alerts",
+            "description": "Збіги з алергенами з профілю користувача"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "url",
+          "price",
+          "stock",
+          "weighted",
+          "step",
+          "package",
+          "enough_stock",
+          "purchase",
+          "allergen_source",
+          "alerts"
+        ],
+        "title": "Alternative",
+        "description": "Another product that could replace the pick. Picking the best one is not done here."
+      },
       "DbHealthResponse": {
         "properties": {
           "status": {
@@ -821,6 +1095,91 @@
           "version"
         ],
         "title": "HealthResponse"
+      },
+      "IngredientAllergens": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "declared",
+              "likely",
+              "unknown"
+            ],
+            "title": "Source"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name",
+            "description": "Товар Сільпо, чию картку перевірено"
+          },
+          "product_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Url",
+            "description": "Сторінка товару в Сільпо: перевірити склад самому"
+          },
+          "contains": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Contains",
+            "description": "Алергени, які вказані як склад у картці Сільпо"
+          },
+          "traces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Traces",
+            "description": "Алергени, сліди яких можливі за декларацією"
+          },
+          "likely": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Likely",
+            "description": "Імовірні алергени за типом продукту (підказка)"
+          },
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AllergenAlert"
+            },
+            "type": "array",
+            "title": "Alerts",
+            "description": "Збіги з алергенами з профілю користувача"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "product_name",
+          "product_url",
+          "contains",
+          "traces",
+          "likely",
+          "alerts"
+        ],
+        "title": "IngredientAllergens"
       },
       "IngredientNutrition": {
         "properties": {
@@ -978,6 +1337,213 @@
           "carbs_g"
         ],
         "title": "NutritionFacts"
+      },
+      "ProductOption": {
+        "properties": {
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Сторінка товару в Сільпо"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price",
+            "description": "Ціна за упаковку, а для вагових товарів за кг"
+          },
+          "stock": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock",
+            "description": "Залишок: упаковок, а для вагових товарів кг"
+          },
+          "weighted": {
+            "type": "boolean",
+            "title": "Weighted"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "description": "Мінімальний крок: упаковок, а для вагових кг"
+          },
+          "package": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package",
+            "description": "Що в одній упаковці, як віддає Сільпо: «870г», «10шт». Без перетворень"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "url",
+          "price",
+          "stock",
+          "weighted",
+          "step",
+          "package"
+        ],
+        "title": "ProductOption",
+        "description": "A Silpo product and what Silpo says about how it is sold."
+      },
+      "Purchase": {
+        "properties": {
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "description": "Скільки купити: упаковок або кг (див. quantity_unit)"
+          },
+          "quantity_unit": {
+            "type": "string",
+            "enum": [
+              "pack",
+              "kg"
+            ],
+            "title": "Quantity Unit"
+          },
+          "total_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Price"
+          },
+          "leftover_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leftover G",
+            "description": "Скільки грамів лишиться після рецепта"
+          },
+          "leftover_pieces": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leftover Pieces",
+            "description": "Скільки штук лишиться після рецепта"
+          },
+          "estimated": {
+            "type": "boolean",
+            "title": "Estimated",
+            "description": "True: вагу оцінено за густиною або середньою вагою штуки, це не точне число"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quantity",
+          "quantity_unit",
+          "total_price",
+          "leftover_g",
+          "leftover_pieces",
+          "estimated"
+        ],
+        "title": "Purchase"
+      },
+      "RecipeAllergenCheck": {
+        "properties": {
+          "recipe_id": {
+            "type": "integer",
+            "title": "Recipe Id"
+          },
+          "profile_applied": {
+            "type": "boolean",
+            "title": "Profile Applied",
+            "description": "Чи враховано алергени з профілю (є вхід)"
+          },
+          "silpo_checked": {
+            "type": "boolean",
+            "title": "Silpo Checked",
+            "description": "False: Сільпо не відповіло, показано лише підказки за типом продукту"
+          },
+          "ingredients": {
+            "items": {
+              "$ref": "#/components/schemas/IngredientAllergens"
+            },
+            "type": "array",
+            "title": "Ingredients"
+          },
+          "unknown_ingredients": {
+            "type": "integer",
+            "title": "Unknown Ingredients",
+            "description": "Інгредієнти, про алергени яких нічого не відомо"
+          },
+          "has_alerts": {
+            "type": "boolean",
+            "title": "Has Alerts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recipe_id",
+          "profile_applied",
+          "silpo_checked",
+          "ingredients",
+          "unknown_ingredients",
+          "has_alerts"
+        ],
+        "title": "RecipeAllergenCheck"
       },
       "RecipeNutrition": {
         "properties": {
@@ -1158,6 +1724,46 @@
         ],
         "title": "RecipeRequest"
       },
+      "RecipeShoppingList": {
+        "properties": {
+          "recipe_id": {
+            "type": "integer",
+            "title": "Recipe Id"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ShoppingLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "total_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Price",
+            "description": "Сума за рядками, для яких відомо, що купувати"
+          },
+          "needs_attention": {
+            "type": "integer",
+            "title": "Needs Attention",
+            "description": "Рядки, де є проблема: немає, мало або фасування"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recipe_id",
+          "lines",
+          "total_price",
+          "needs_attention"
+        ],
+        "title": "RecipeShoppingList"
+      },
       "RegisterRequest": {
         "properties": {
           "email": {
@@ -1178,6 +1784,132 @@
           "password"
         ],
         "title": "RegisterRequest"
+      },
+      "ShoppingLine": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "at_home",
+              "to_taste",
+              "no_product",
+              "out_of_stock",
+              "partial_stock",
+              "unknown_package",
+              "ok"
+            ],
+            "title": "Status"
+          },
+          "have_at_home": {
+            "type": "boolean",
+            "title": "Have At Home"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity",
+            "description": "Скільки потрібно за рецептом"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "Одиниця з рецепта"
+          },
+          "needed_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needed G",
+            "description": "Скільки це грамів, якщо вдалося перерахувати"
+          },
+          "grams_basis": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "exact",
+                  "density",
+                  "density_assumed",
+                  "piece_weight"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grams Basis",
+            "description": "На чому тримається перерахунок у грами"
+          },
+          "grams_per_unit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grams Per Unit",
+            "description": "Грамів на мл (густина) або на штуку, якщо перерахунок оцінений"
+          },
+          "product": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductOption"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "purchase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Purchase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "alternatives": {
+            "items": {
+              "$ref": "#/components/schemas/Alternative"
+            },
+            "type": "array",
+            "title": "Alternatives"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "status",
+          "have_at_home",
+          "quantity",
+          "unit",
+          "needed_g",
+          "grams_basis",
+          "grams_per_unit",
+          "product",
+          "purchase",
+          "alternatives"
+        ],
+        "title": "ShoppingLine"
       },
       "SilpoAuthorizeRead": {
         "properties": {
