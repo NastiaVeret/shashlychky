@@ -4,8 +4,8 @@ Only Silpo data is counted: an ingredient without a matching product, without nu
 attributes or with a quantity that cannot be converted to grams is reported but left out of
 the totals. The response says how many ingredients were counted, so the UI can be honest.
 
-The Silpo MCP client lives in `app.integrations.silpo`. `SilpoNutritionProvider` depends only on
-the `SilpoSession` protocol (which `SilpoClient` satisfies) so it can be tested with a fake.
+The Silpo MCP client lives in `app.integrations.silpo`; the product lookup shared with the
+allergen check and the shopping list is `app.integrations.silpo.catalog.ProductCatalog`.
 """
 
 import logging
@@ -13,16 +13,12 @@ import re
 from dataclasses import dataclass
 from typing import Annotated, Any, Protocol
 
-import httpx
 from fastapi import Depends
-from mcp.shared.exceptions import McpError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import NutritionUnavailableError
-from app.db.session import get_sessionmaker
-from app.integrations.silpo import SilpoError, SilpoNotConnectedError, connect
-from app.integrations.silpo.db_storage import DbTokenStorage
+from app.integrations.silpo.catalog import ProductCatalog
 from app.schemas.nutrition import (
     GoalComparison,
     IngredientNutrition,
@@ -31,7 +27,9 @@ from app.schemas.nutrition import (
     RecipeNutrition,
 )
 from app.schemas.recipes import IngredientRead, RecipeRead
+from app.services.catalog import ConnectedCatalogProvider
 from app.services.recipes import get_recipe
+from app.services.units import to_grams
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +39,8 @@ ATTR_PROTEIN = "Білки (г)"
 ATTR_FAT = "Жири (г)"
 ATTR_CARBS = "Вуглеводи (г)"
 
-# Grams per unit. Millilitres are counted as grams (density ~1), good enough for КБЖВ.
+# Grams per unit of a PACK size as Silpo prints it ("870г", "1л"). Recipe amounts go through
+# `app.services.units`, which knows densities and piece weights.
 UNIT_GRAMS = {
     "г": 1.0,
     "гр": 1.0,
@@ -75,19 +74,6 @@ class NutritionProvider(Protocol):
     """
 
     async def lookup(self, names: list[str]) -> dict[str, ProductNutrition | None]: ...
-
-
-class SilpoSession(Protocol):
-    """The subset of `SilpoClient` (mcp-silpo) this module needs.
-
-    Values are raw MCP JSON, hence Any.
-    """
-
-    async def search_context(self) -> dict[str, Any]: ...
-
-    async def find_products(self, names: list[str], limit: int = 3) -> dict[str, list[Any]]: ...
-
-    async def call(self, name: str, args: dict[str, Any] | None = None) -> dict[str, Any]: ...
 
 
 def _to_float(value: object) -> float | None:
@@ -125,14 +111,15 @@ def parse_package_grams(display_ratio: str | None, *, weighted: bool) -> float |
 
 
 def ingredient_grams(ingredient: IngredientRead, package_grams: float | None) -> float | None:
+    """Recipe amount in grams. A piece of a product sold in a pack of known weight is that pack
+    (a tomato sold as "150г"); otherwise millilitres use the density table and pieces the
+    average-piece table, both estimates."""
     if ingredient.quantity is None:
         return None
-    unit = ingredient.unit.strip().lower()
-    if unit in UNIT_GRAMS:
-        return ingredient.quantity * UNIT_GRAMS[unit]
-    if unit in PIECE_UNITS and package_grams:
+    if ingredient.unit.strip().lower() in PIECE_UNITS and package_grams:
         return ingredient.quantity * package_grams
-    return None
+    grams = to_grams(ingredient.name, ingredient.quantity, ingredient.unit)
+    return grams.value if grams else None
 
 
 def _scale(facts: NutritionFacts, factor: float) -> NutritionFacts:
@@ -227,71 +214,35 @@ async def recipe_nutrition(
     return result
 
 
-class SilpoNutritionProvider:
-    """Takes the first available Silpo product per ingredient and reads its card."""
-
-    def __init__(self, silpo: SilpoSession) -> None:
-        self._silpo = silpo
-
-    async def lookup(self, names: list[str]) -> dict[str, ProductNutrition | None]:
-        try:
-            # One batch search for all names: Silpo serialises parallel searches.
-            found = await self._silpo.find_products(names, limit=3)
-            ctx = await self._silpo.search_context()
-            result: dict[str, ProductNutrition | None] = {}
-            for name in names:
-                product = next((p for p in found.get(name, []) if p.get("available")), None)
-                result[name] = await self._details(product, ctx) if product else None
-            return result
-        except (SilpoError, McpError, httpx.HTTPError, TimeoutError, OSError) as exc:
-            logger.warning("silpo nutrition lookup failed: %s: %s", type(exc).__name__, exc)
-            raise NutritionUnavailableError() from exc
-
-    async def _details(self, product: dict[str, Any], ctx: dict[str, Any]) -> ProductNutrition:
-        res = await self._silpo.call("silpo_get_product_details", {**ctx, "slug": product["slug"]})
-        card = res.get("product") or {}
-        return ProductNutrition(
-            product_name=str(product["name"]),
-            per_100g=parse_attributes(card.get("attributes") or {}),
-            package_grams=parse_package_grams(
-                product.get("displayRatio"), weighted=bool(product.get("weighted"))
-            ),
+async def lookup_nutrition(
+    catalog: ProductCatalog, names: list[str]
+) -> dict[str, ProductNutrition | None]:
+    """First available Silpo product per ingredient name, with its КБЖВ and pack size."""
+    result: dict[str, ProductNutrition | None] = {}
+    for name, match in (await catalog.match(names)).items():
+        card = match.card
+        result[name] = (
+            ProductNutrition(
+                product_name=card.candidate.name,
+                per_100g=parse_attributes(card.attributes),
+                package_grams=parse_package_grams(
+                    card.candidate.display_ratio, weighted=card.candidate.weighted
+                ),
+            )
+            if card
+            else None
         )
-
-
-def _not_connected() -> NutritionUnavailableError:
-    return NutritionUnavailableError(
-        "Сільпо не підключено: потрібен одноразовий вхід адміністратора"
-    )
+    return result
 
 
 class ConnectedSilpoProvider:
-    """Opens one MCP session per lookup. A localhost URL is the mock (no OAuth); the real server
-    needs a logged-in token file, which only exists on a developer machine for now."""
+    """КБЖВ lookup over the shared Silpo catalogue provider (one session per lookup)."""
 
     def __init__(self, url: str) -> None:
-        self._url = url
+        self._catalog = ConnectedCatalogProvider(url, NutritionUnavailableError)
 
     async def lookup(self, names: list[str]) -> dict[str, ProductNutrition | None]:
-        storage = DbTokenStorage(get_sessionmaker())
-        try:
-            async with connect(self._url, storage, interactive=False) as silpo:
-                return await SilpoNutritionProvider(silpo).lookup(names)
-        except SilpoNotConnectedError as exc:
-            raise _not_connected() from exc
-        except BaseExceptionGroup as group:
-            # The MCP SDK runs the transport in an anyio task group, so errors raised inside
-            # its callbacks (e.g. "no login stored") come out wrapped in an ExceptionGroup.
-            if group.subgroup(SilpoNotConnectedError) is not None:
-                raise _not_connected() from group
-            expected = (SilpoError, McpError, httpx.HTTPError, TimeoutError, OSError)
-            if group.subgroup(expected) is not None:
-                logger.warning("silpo connect failed: %s", group)
-                raise NutritionUnavailableError() from group
-            raise
-        except (SilpoError, McpError, httpx.HTTPError, TimeoutError, OSError) as exc:
-            logger.warning("silpo connect failed: %s: %s", type(exc).__name__, exc)
-            raise NutritionUnavailableError() from exc
+        return await self._catalog.run(lambda catalog: lookup_nutrition(catalog, names))
 
 
 def get_nutrition_provider(

@@ -8,7 +8,7 @@ import pytest
 
 from app.core.errors import NutritionUnavailableError
 from app.integrations.silpo import SilpoNotConnectedError
-from app.services import nutrition
+from app.services import catalog
 from app.services.nutrition import ConnectedSilpoProvider
 
 
@@ -37,8 +37,8 @@ class _RaisingConnect:
 async def test_missing_login_is_service_unavailable(
     monkeypatch: pytest.MonkeyPatch, exc: BaseException
 ) -> None:
-    monkeypatch.setattr(nutrition, "connect", _RaisingConnect(exc))
-    monkeypatch.setattr(nutrition, "get_sessionmaker", lambda: None)
+    monkeypatch.setattr(catalog, "connect", _RaisingConnect(exc))
+    monkeypatch.setattr(catalog, "get_sessionmaker", lambda: None)
 
     with pytest.raises(NutritionUnavailableError) as caught:
         await ConnectedSilpoProvider("https://mcp.silpo.ua/mcp").lookup(["яйця"])
@@ -48,9 +48,9 @@ async def test_missing_login_is_service_unavailable(
 
 async def test_unrelated_error_group_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        nutrition, "connect", _RaisingConnect(ExceptionGroup("boom", [KeyError("x")]))
+        catalog, "connect", _RaisingConnect(ExceptionGroup("boom", [KeyError("x")]))
     )
-    monkeypatch.setattr(nutrition, "get_sessionmaker", lambda: None)
+    monkeypatch.setattr(catalog, "get_sessionmaker", lambda: None)
 
     with pytest.raises(ExceptionGroup):
         await ConnectedSilpoProvider("https://mcp.silpo.ua/mcp").lookup(["яйця"])
