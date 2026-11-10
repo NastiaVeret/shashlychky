@@ -2,15 +2,15 @@ from typing import Any
 
 import pytest
 
-from app.core.errors import NutritionUnavailableError
 from app.integrations.silpo import SilpoError
+from app.integrations.silpo.catalog import ProductCatalog
 from app.schemas.nutrition import NutritionFacts
 from app.schemas.recipes import IngredientRead
 from app.services.nutrition import (
     ProductNutrition,
-    SilpoNutritionProvider,
     calculate,
     ingredient_grams,
+    lookup_nutrition,
     parse_attributes,
     parse_package_grams,
 )
@@ -75,6 +75,23 @@ def test_ingredient_grams(
     assert ingredient_grams(ingredient, package) == expected
 
 
+@pytest.mark.parametrize(
+    ("name", "quantity", "unit", "package", "expected"),
+    [
+        ("Борошно", 250, "мл", None, 132.5),  # a cup of flour is not 250 g
+        ("Олія", 2, "ст. л.", None, 27.6),
+        ("Помідор", 2, "шт", None, 240),  # the average piece
+        ("Помідор", 2, "шт", 150, 300),  # a pack of known weight wins over the average
+        ("Яйця", 3, "шт", None, 165),
+    ],
+)
+def test_ingredient_grams_uses_densities_and_piece_weights(
+    name: str, quantity: float, unit: str, package: float | None, expected: float
+) -> None:
+    ingredient = IngredientRead(name=name, quantity=quantity, unit=unit, have_at_home=True)
+    assert ingredient_grams(ingredient, package) == pytest.approx(expected)
+
+
 def test_calculate_counts_only_ingredients_with_silpo_data() -> None:
     tomato = ProductNutrition(
         product_name="Помідор",
@@ -122,7 +139,9 @@ class FakeSilpo:
     async def search_context(self) -> dict[str, Any]:
         return {"branchId": "b", "deliveryType": "DeliveryHome"}
 
-    async def find_products(self, names: list[str], limit: int = 3) -> dict[str, list[Any]]:
+    async def find_products(
+        self, names: list[str], limit: int = 3, ctx: dict[str, Any] | None = None
+    ) -> dict[str, list[Any]]:
         if self.fail:
             raise SilpoError("silpo_find_products_batch", "silpo down")
         catalogue = {
@@ -150,7 +169,7 @@ class FakeSilpo:
 
 async def test_silpo_provider_reads_first_available_product_card() -> None:
     silpo = FakeSilpo()
-    result = await SilpoNutritionProvider(silpo).lookup(["Молоко", "Сир", "Кіноа"])
+    result = await lookup_nutrition(ProductCatalog(silpo), ["Молоко", "Сир", "Кіноа"])
 
     assert result["Молоко"] == ProductNutrition(
         product_name="Молоко Галичина 2,5%", per_100g=MILK, package_grams=950
@@ -159,8 +178,3 @@ async def test_silpo_provider_reads_first_available_product_card() -> None:
     assert result["Сир"] == ProductNutrition(product_name="Сир", per_100g=None, package_grams=None)
     assert result["Кіноа"] is None  # nothing found
     assert silpo.detail_calls == ["milk", "cheese"]
-
-
-async def test_silpo_provider_failure_raises_unavailable() -> None:
-    with pytest.raises(NutritionUnavailableError):
-        await SilpoNutritionProvider(FakeSilpo(fail=True)).lookup(["Молоко"])

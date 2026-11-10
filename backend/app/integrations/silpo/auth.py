@@ -128,6 +128,17 @@ class SilpoOAuthProvider(OAuthClientProvider):
             self.context.token_expiry_time = expiry
 
 
+def client_metadata(redirect_uri: str = REDIRECT_URI) -> OAuthClientMetadata:
+    """What we register at Silpo (dynamic client registration): a public client with PKCE."""
+    return OAuthClientMetadata(
+        client_name="Cook 'n' Love",
+        redirect_uris=[redirect_uri],
+        grant_types=["authorization_code", "refresh_token"],
+        response_types=["code"],
+        token_endpoint_auth_method="none",
+    )
+
+
 def make_auth(
     server_url: str,
     storage: TokenStorage | None = None,
@@ -137,13 +148,7 @@ def make_auth(
     """Провайдер авторизації для streamablehttp_client(url, auth=...)."""
     return SilpoOAuthProvider(
         server_url=server_url,
-        client_metadata=OAuthClientMetadata(
-            client_name="Cook 'n' Love",
-            redirect_uris=[REDIRECT_URI],
-            grant_types=["authorization_code", "refresh_token"],
-            response_types=["code"],
-            token_endpoint_auth_method="none",
-        ),
+        client_metadata=client_metadata(),
         storage=storage or FileTokenStorage(),
         redirect_handler=redirect_handler,
         callback_handler=callback_handler,

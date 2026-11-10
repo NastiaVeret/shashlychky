@@ -37,3 +37,28 @@ export const nutritionKeys = {
 // The goal comparison is pure arithmetic on the client; the server is asked once per recipe.
 export const getRecipeNutrition = (id: number, signal?: AbortSignal) =>
   apiFetch<RecipeNutrition>(`/api/v1/recipes/${id}/nutrition`, { signal });
+
+export type RecipeAllergenCheck = components['schemas']['RecipeAllergenCheck'];
+export type IngredientAllergens = components['schemas']['IngredientAllergens'];
+export type AllergenAlert = components['schemas']['AllergenAlert'];
+
+export const allergenKeys = {
+  detail: (id: number) => ['recipes', id, 'allergens'] as const,
+};
+
+// The alerts depend on the logged-in user's profile, so this answer is not shared between users.
+export const getRecipeAllergens = (id: number, signal?: AbortSignal) =>
+  apiFetch<RecipeAllergenCheck>(`/api/v1/recipes/${id}/allergens`, { signal });
+
+export type RecipeShoppingList = components['schemas']['RecipeShoppingList'];
+export type ShoppingLine = components['schemas']['ShoppingLine'];
+export type Purchase = components['schemas']['Purchase'];
+export type ProductOption = components['schemas']['ProductOption'];
+export type Alternative = components['schemas']['Alternative'];
+
+export const shoppingKeys = {
+  detail: (id: number) => ['recipes', id, 'shopping-list'] as const,
+};
+
+export const getRecipeShoppingList = (id: number, signal?: AbortSignal) =>
+  apiFetch<RecipeShoppingList>(`/api/v1/recipes/${id}/shopping-list`, { signal });

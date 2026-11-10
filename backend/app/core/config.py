@@ -40,6 +40,9 @@ class Settings(BaseSettings):
 
     # Silpo MCP server. Empty disables the integration; a localhost URL is the mock (no OAuth).
     silpo_mcp_url: str | None = None
+    # Public origin of the web app, for the Silpo OAuth redirect URI. Empty: the first CORS
+    # origin, which is the frontend in every environment (Firebase Hosting proxies /api).
+    public_url: str | None = None
 
     # Auth. Secure cookies are accepted on http://localhost by Chrome and Firefox, so the
     # default works locally too; set SESSION_COOKIE_SECURE=false only for Safari dev.
@@ -52,6 +55,11 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def silpo_redirect_uri(self) -> str:
+        origin = (self.public_url or self.cors_origin_list[0]).rstrip("/")
+        return f"{origin}/api/v1/silpo/callback"
 
     @property
     def sqlalchemy_url(self) -> str:

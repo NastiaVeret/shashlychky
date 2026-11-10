@@ -3,7 +3,9 @@
 The prompt is the primary guard; this is a safety net that does not trust the model. It has no
 dictionary, so it works on stems: a text word matches an allergy word when it is the same stem
 followed by a known Ukrainian noun or adjective ending. That keeps "молочний"/"яєчний"/"арахісова"
-and rejects "молотий", "медальйони", "макарони", "маслини", "горілка", "сирий".
+and rejects "молотий", "медальйони", "макарони", "маслини", "горілка", "сирий". A few allergen
+groups ("глютен", "горіхи", "лактоза", "морепродукти") also match their members ("пшениця",
+"фундук", ...), so an allergy named by its group meets a label that names the source.
 """
 
 import re
@@ -36,7 +38,7 @@ _ALTERNATIONS = {"к": "ч", "г": "ж", "х": "ш", "ц": "ч"}
 _SYNONYM_STEMS: dict[str, tuple[str, ...]] = {
     "яйц": ("яєч", "яєць", "яєчн"),
     "яйце": ("яєч", "яєць"),
-    "соя": ("соєв", "соєви"),
+    "соя": ("соєв", "соєви", "сою", "сої", "соєю"),
     "курк": ("куряч", "курят", "куриц"),
     "курят": ("куряч", "курк"),
     "горіх": ("горішк",),
@@ -44,8 +46,25 @@ _SYNONYM_STEMS: dict[str, tuple[str, ...]] = {
     "риб": ("рибн", "рибк"),
     "пшениц": ("пшеничн",),
     "глютен": ("глютенов", "клейковин"),
+    "жит": ("житн",),
+    "ячмін": ("ячмен",),
+    "овес": ("вівс", "вівсян"),
+    "мигдал": ("мигдальн",),
+    "фісташк": ("фісташок",),
+    "волоськ": ("волоськ",),
+    "ракоподібн": ("ракоподібн",),
+    "креветк": ("креветок",),
 }
 _SYNONYM_TAIL = 4
+# Allergen groups: an allergy to the group (key, a stem) is also an allergy to every member
+# (stems matched by the same rules). Silpo cards name the source ("ПШЕНИЦЯ", "фундук"), people
+# name the group ("глютен", "горіхи"); without this the two never meet.
+_GROUP_MEMBERS: dict[str, tuple[str, ...]] = {
+    "глютен": ("пшениц", "жит", "ячмін", "овес", "спельт"),
+    "горіх": ("фундук", "мигдал", "кешью", "фісташк", "пекан", "волоськ", "арахіс"),
+    "лактоз": ("молок",),
+    "морепродукт": ("ракоподібн", "молюск", "креветк"),
+}
 
 
 def _stem(word: str) -> str:
@@ -74,6 +93,13 @@ def _word_matches(word: str, stem: str) -> bool:
     return False
 
 
+def _word_matches_allergy(word: str, stem: str) -> bool:
+    """The allergy word itself or, for a group such as "глютен", any of its members."""
+    return _word_matches(word, stem) or any(
+        _word_matches(word, member) for member in _GROUP_MEMBERS.get(stem, ())
+    )
+
+
 def find_allergens(allergies: Iterable[str], texts: Iterable[str]) -> list[str]:
     """Allergies found in any of the texts: every word of the allergy matches a word of the text."""
     text_words = [_WORD_RE.findall(t.casefold()) for t in texts]
@@ -81,7 +107,8 @@ def find_allergens(allergies: Iterable[str], texts: Iterable[str]) -> list[str]:
     for allergy in allergies:
         stems = [_stem(w) for w in _WORD_RE.findall(allergy.casefold())]
         if stems and any(
-            all(any(_word_matches(w, s) for w in words) for s in stems) for words in text_words
+            all(any(_word_matches_allergy(w, s) for w in words) for s in stems)
+            for words in text_words
         ):
             found.append(allergy)
     return found

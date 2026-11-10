@@ -3,7 +3,8 @@
 from app.db.base import Base
 from app.models.auth_session import AuthSession
 from app.models.recipe import Recipe
+from app.models.silpo_connection import SilpoConnection
 from app.models.silpo_token import SilpoToken
 from app.models.user import User
 
-__all__ = ["AuthSession", "Base", "Recipe", "SilpoToken", "User"]
+__all__ = ["AuthSession", "Base", "Recipe", "SilpoConnection", "SilpoToken", "User"]
