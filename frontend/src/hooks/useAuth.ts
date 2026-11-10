@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { deleteMe, getMe, login, logout, meKeys, register, type UserRead } from '../api/auth';
 import { profileKeys } from '../api/profile';
 import { recipeKeys } from '../api/recipes';
+import { silpoKeys } from '../api/silpo';
 
 /** `data` is `null` when not logged in; `undefined` only while the first request is pending. */
 export function useMe() {
@@ -17,6 +18,7 @@ function onLoggedIn(qc: QueryClient, user: UserRead) {
   qc.setQueryData(meKeys.me, user);
   void qc.invalidateQueries({ queryKey: profileKeys.profile });
   void qc.invalidateQueries({ queryKey: recipeKeys.mine });
+  void qc.invalidateQueries({ queryKey: silpoKeys.connection });
 }
 
 /** Also called from the QueryClient caches when any request answers 401: the session is gone. */
@@ -24,6 +26,7 @@ export function onLoggedOut(qc: QueryClient) {
   qc.setQueryData(meKeys.me, null);
   qc.removeQueries({ queryKey: profileKeys.profile });
   qc.removeQueries({ queryKey: recipeKeys.mine });
+  qc.removeQueries({ queryKey: silpoKeys.connection });
 }
 
 export function useLogin() {
