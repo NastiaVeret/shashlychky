@@ -2,9 +2,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# declared: Silpo's product card lists allergens (the only data source)
+# declared: Silpo's product card lists allergens (`likely` may still add dictionary hints)
 # likely: the card says nothing, but products of this type usually contain them (our own short
-#         dictionary: a hint, not a fact)
+#         dictionary: a hint, not a fact; filled in `likely` whatever the source)
 # unknown: nothing is known; the user must check the product page
 AllergenSource = Literal["declared", "likely", "unknown"]
 # contains: listed as an ingredient; traces: "may contain traces of"; likely: the dictionary guess

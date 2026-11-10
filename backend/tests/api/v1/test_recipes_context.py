@@ -195,3 +195,16 @@ async def test_allergen_check_alerts_on_the_users_own_allergies(
     assert body["profile_applied"] is True and body["has_alerts"] is True
     eggs = next(r for r in body["ingredients"] if r["name"] == "Яйця")
     assert eggs["alerts"] == [{"allergy": "молоко", "level": "traces"}]
+
+
+async def test_allergen_check_treats_a_lactose_free_diet_as_a_milk_allergy(
+    client: AsyncClient, fake_llm: FakeLLM, fake_catalog: FakeCatalogProvider, logged_in: None
+) -> None:
+    # no allergies listed, only the diet: the traces of milk on the eggs still warn
+    await save_profile(client, diets=["lactose_free"])
+    created = (await client.post("/api/v1/recipes", json={"products": ["яйця"]})).json()
+
+    body = (await client.get(f"/api/v1/recipes/{created['id']}/allergens")).json()
+
+    eggs = next(r for r in body["ingredients"] if r["name"] == "Яйця")
+    assert eggs["alerts"] == [{"allergy": "молоко", "level": "traces"}]

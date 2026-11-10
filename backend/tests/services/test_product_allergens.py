@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from app.integrations.silpo.catalog import Candidate, IngredientMatch, ProductCard
+from app.schemas.profiles import UserProfile
 from app.services.allergens import find_allergens
 from app.services.product_allergens import (
     ATTR_ALLERGENS,
@@ -12,6 +13,7 @@ from app.services.product_allergens import (
     check_ingredient,
     likely_allergens,
     parse_allergen_attribute,
+    product_check_allergies,
 )
 from tests.conftest import SAMPLE_RECIPE
 
@@ -118,10 +120,43 @@ def test_card_with_allergens_is_declared_and_alerts_the_user() -> None:
     assert row.product_url == "https://p"
 
 
-def test_declared_card_wins_over_the_dictionary() -> None:
-    # the card is the source of truth: no dictionary guess is mixed in
+def test_declared_card_does_not_silence_the_dictionary() -> None:
+    # a mayonnaise card that lists only mustard still holds eggs: the hint stays
     row = check_ingredient("Майонез", match("Майонез", {ATTR_ALLERGENS: "ГІРЧИЦЯ"}), ["яйця"])
-    assert row.source == "declared" and row.likely == [] and row.alerts == []
+    assert row.source == "declared" and row.contains == ["гірчиця"]
+    assert row.likely == ["яйця", "гірчиця"]
+    assert [(a.allergy, a.level) for a in row.alerts] == [("яйця", "likely")]
+
+
+def test_wheat_on_the_card_alerts_a_gluten_allergy() -> None:
+    row = check_ingredient(
+        "Борошно", match("Борошно пшеничне", {ATTR_ALLERGENS: "ПШЕНИЦЯ"}), ["глютен"]
+    )
+    assert row.source == "declared"
+    assert [(a.allergy, a.level) for a in row.alerts] == [("глютен", "contains")]
+
+
+def test_traces_of_named_nuts_alert_a_nut_allergy() -> None:
+    attribute = "Пшениця. Може містити сліди: фундук, мигдаль"
+    row = check_ingredient("Печиво", match("Печиво", {ATTR_ALLERGENS: attribute}), ["горіхи"])
+    assert row.traces == ["фундук", "мигдаль"]
+    assert [(a.allergy, a.level) for a in row.alerts] == [("горіхи", "traces")]
+
+
+@pytest.mark.parametrize("value", ["Не містить", "не містить.", "Алергени: відсутні", "Немає"])
+def test_a_declaration_of_none_is_not_an_allergen(value: str) -> None:
+    assert parse_allergen_attribute(value) == ([], [])
+    row = check_ingredient("Сік", match("Сік яблучний", {ATTR_ALLERGENS: value}), ["молоко"])
+    assert row.source == "unknown" and row.contains == [] and row.alerts == []
+
+
+def test_a_declaration_of_none_does_not_hide_the_products_own_name() -> None:
+    # "Не містить" on a milk card says nothing reliable; the name still alerts, never "safe"
+    row = check_ingredient(
+        "Молоко", match("Молоко 2,5%", {ATTR_ALLERGENS: "Не містить"}), ["молоко"]
+    )
+    assert row.contains == []
+    assert [(a.allergy, a.level) for a in row.alerts] == [("молоко", "contains")]
 
 
 def test_hidden_egg_in_mayonnaise_is_flagged_as_likely() -> None:
@@ -155,6 +190,30 @@ def test_a_declared_card_with_other_allergens_raises_no_alert() -> None:
         "Ковбаса", match("Ковбаса", {ATTR_ALLERGENS: SAUSAGE_ALLERGENS}), ["арахіс"]
     )
     assert row.source == "declared" and row.alerts == []
+
+
+# ---------- diets that rule out an allergen ----------
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected"),
+    [
+        (UserProfile(diets=["gluten_free"]), ["глютен"]),
+        (UserProfile(diets=["lactose_free", "vegan"]), ["молоко"]),
+        (UserProfile(allergies=["молоко"], diets=["lactose_free"]), ["молоко"]),
+        (UserProfile(allergies=["яйця"], diets=["halal"]), ["яйця"]),
+    ],
+)
+def test_gluten_and_lactose_free_diets_count_as_allergies(
+    profile: UserProfile, expected: list[str]
+) -> None:
+    assert product_check_allergies(profile) == expected
+
+
+def test_gluten_free_diet_is_warned_about_wheat_in_a_product() -> None:
+    allergies = product_check_allergies(UserProfile(diets=["gluten_free"]))
+    row = check_ingredient("Борошно", match("Борошно", {ATTR_ALLERGENS: "ПШЕНИЦЯ"}), allergies)
+    assert [(a.allergy, a.level) for a in row.alerts] == [("глютен", "contains")]
 
 
 # ---------- the whole recipe ----------

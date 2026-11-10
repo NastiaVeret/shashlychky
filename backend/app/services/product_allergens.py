@@ -7,7 +7,8 @@ products instead, from two sources:
 1. Silpo's product card, when it has the "Містить алергени" attribute. Silpo fills it for only some
    products, so its absence proves nothing.
 2. A short dictionary of what a type of product usually contains. It is a hint ("likely"), never a
-   guarantee, and is only used when the card says nothing.
+   guarantee. It is always applied, even when the card declares allergens: cards are filled by
+   hand and miss things (a mayonnaise card that lists only mustard still holds eggs).
 
 Without either, the ingredient is "unknown": the caller shows the product page link and the user
 checks the label. Nothing here ever reports a product as safe.
@@ -24,9 +25,11 @@ from app.models.user import User
 from app.schemas.allergens import (
     AlertLevel,
     AllergenAlert,
+    AllergenSource,
     IngredientAllergens,
     RecipeAllergenCheck,
 )
+from app.schemas.profiles import Diet, UserProfile
 from app.schemas.recipes import RecipeRead
 from app.services.allergens import find_allergens
 from app.services.catalog import CatalogProvider
@@ -40,6 +43,10 @@ ATTR_ALLERGENS = "Містить алергени"
 _TRACES_MARK = re.compile(r"може\s+містити(?:\s+сліди)?\s*:?", re.IGNORECASE)
 _LEADING_LABEL = re.compile(r"^\s*(?:містить|алергени)\s*:?\s*", re.IGNORECASE)
 _SEPARATORS = re.compile(r"[,;.]")
+# Items that declare the absence of allergens ("Не містить", "Алергени: відсутні"), not one.
+_NONE_DECLARED = re.compile(r"^(?:не\s+містить|не\s+виявлено|відсутн|немає|нема\b|без\b|ні$)")
+# Diets that rule out an allergen: for the product check they count as that allergy.
+DIET_ALLERGIES: dict[Diet, str] = {"gluten_free": "глютен", "lactose_free": "молоко"}
 
 # Product type -> allergens it usually contains. Every word of the type must appear in the
 # ingredient or product name (same stem rules as the recipe check). Kept short and uncontroversial
@@ -68,11 +75,12 @@ TYPICAL_ALLERGENS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 def _items(text: str) -> list[str]:
     parts = (p.strip(" .;\t\n") for p in _SEPARATORS.split(text))
-    return [p for p in parts if p]
+    return [p for p in parts if p and not _NONE_DECLARED.match(p)]
 
 
 def parse_allergen_attribute(value: object) -> tuple[list[str], list[str]] | None:
-    """The card attribute as (contains, traces), lower-cased. None when there is no usable text."""
+    """The card attribute as (contains, traces), lower-cased. None when there is no usable text.
+    Declarations of "none" ("Не містить", "відсутні") are dropped: they are not allergens."""
     if not isinstance(value, str) or not value.strip():
         return None
     head, *rest = _TRACES_MARK.split(value.casefold(), maxsplit=1)
@@ -86,6 +94,12 @@ def likely_allergens(*names: str) -> list[str]:
         if find_allergens([product_type], names):
             found.extend(a for a in allergens if a not in found)
     return found
+
+
+def product_check_allergies(profile: UserProfile) -> list[str]:
+    """The profile's allergies plus the allergens its diets rule out ("без глютену" -> "глютен")."""
+    from_diets = [allergy for diet, allergy in DIET_ALLERGIES.items() if diet in profile.diets]
+    return list(dict.fromkeys([*profile.allergies, *from_diets]))
 
 
 def _alerts(
@@ -124,17 +138,13 @@ def check_ingredient(
     product_name = card.candidate.name if card else None
     parsed = parse_allergen_attribute(card.attributes.get(ATTR_ALLERGENS)) if card else None
 
-    contains: list[str] = []
-    traces: list[str] = []
-    likely: list[str] = []
-    alert_likely: list[str] = []
-    if parsed is not None and (parsed[0] or parsed[1]):
-        source = "declared"
-        contains, traces = parsed
+    contains, traces = parsed if parsed is not None else ([], [])
+    # Always computed: a declared card is not proof that nothing else is inside.
+    likely = likely_allergens(name, *([product_name] if product_name else []))
+    if contains or traces:
+        source: AllergenSource = "declared"
     else:  # no card, no attribute, or an attribute with nothing readable in it
-        likely = likely_allergens(name, *([product_name] if product_name else []))
         source = "likely" if likely else "unknown"
-        alert_likely = likely
     return IngredientAllergens(
         name=name,
         source=source,
@@ -148,7 +158,7 @@ def check_ingredient(
             [name, *([product_name] if product_name else [])],
             contains,
             traces,
-            alert_likely,
+            likely,
         ),
     )
 
@@ -191,5 +201,5 @@ async def recipe_allergen_check(
         silpo_checked = True
     except ProductDataUnavailableError:
         pass
-    allergies = get_profile(user).allergies if user else None
+    allergies = product_check_allergies(get_profile(user)) if user else None
     return build_allergen_check(recipe_id, content, matches, allergies, silpo_checked=silpo_checked)

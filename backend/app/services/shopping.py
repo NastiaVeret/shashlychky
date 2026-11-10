@@ -17,7 +17,7 @@ from app.schemas.recipes import IngredientRead, RecipeRead
 from app.schemas.shopping import Alternative, ProductOption, RecipeShoppingList, ShoppingLine
 from app.services.catalog import CatalogProvider
 from app.services.packaging import has_enough_stock, plan_purchase
-from app.services.product_allergens import check_ingredient
+from app.services.product_allergens import check_ingredient, product_check_allergies
 from app.services.profiles import get_profile
 from app.services.recipes import get_recipe
 from app.services.units import to_grams
@@ -176,5 +176,5 @@ async def recipe_shopping_list(
     """Raises ProductDataUnavailableError (503) when Silpo cannot be asked: without it there is
     nothing honest to put on the list."""
     content = RecipeRead.from_model(await get_recipe(db, recipe_id))
-    allergies = get_profile(user).allergies if user else []
+    allergies = product_check_allergies(get_profile(user)) if user else []
     return build_shopping_list(recipe_id, await shopping_lines(provider, content, allergies))
