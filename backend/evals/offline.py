@@ -160,8 +160,10 @@ def scripted_llm(case: ScriptedCase) -> tuple[GeminiLLM, list[str]]:
     settings = Settings(
         gemini_api_key="eval",
         gemini_model="primary-model",
-        gemini_fallback_model="fallback-model",
+        gemini_fallback_models="fallback-model",
         llm_timeout_seconds=5,
+        # Scripted responses cover exactly one pass over the chain.
+        llm_retry_rounds=1,
     )
     llm = GeminiLLM(settings)
     models_called: list[str] = []

@@ -7,8 +7,9 @@ import pytest
 from google.genai import errors as genai_errors
 
 from app.core.config import Settings
-from app.core.errors import LLMUnavailableError
+from app.core.errors import LLMInvalidResponseError, LLMUnavailableError
 from app.schemas.recipes import RecipeContent
+from app.services import llm as llm_module
 from app.services.llm import GeminiLLM
 from tests.conftest import SAMPLE_RECIPE
 
@@ -29,12 +30,20 @@ def _server_error(code: int) -> genai_errors.ServerError:
     return genai_errors.ServerError(code, {"error": {"message": "boom"}}, None)
 
 
-def _make_llm(behaviour: Callable[[str], Any]) -> tuple[GeminiLLM, list[str]]:
+@pytest.fixture(autouse=True)
+def _no_round_pause(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(llm_module, "ROUND_PAUSE_SECONDS", 0.0)
+
+
+def _make_llm(
+    behaviour: Callable[[str], Any], *, fallbacks: str = "fallback", rounds: int = 1
+) -> tuple[GeminiLLM, list[str]]:
     settings = Settings(
         gemini_api_key="test",
         gemini_model="primary",
-        gemini_fallback_model="fallback",
+        gemini_fallback_models=fallbacks,
         llm_timeout_seconds=1,
+        llm_retry_rounds=rounds,
     )
     llm = GeminiLLM(settings)
     calls: list[str] = []
@@ -71,7 +80,7 @@ async def test_fallback_call_drops_thinking_config() -> None:
     settings = Settings(
         gemini_api_key="test",
         gemini_model="primary",
-        gemini_fallback_model="fallback",
+        gemini_fallback_models="fallback",
         llm_timeout_seconds=1,
     )
     llm = GeminiLLM(settings)
@@ -98,3 +107,56 @@ async def test_both_models_down_raises_unavailable() -> None:
     with pytest.raises(LLMUnavailableError):
         await llm.generate(system="s", user="u", schema=RecipeContent)
     assert calls == ["primary", "fallback"]
+
+
+async def test_chain_walks_past_missing_and_overloaded_models() -> None:
+    def behaviour(model: str) -> Any:
+        if model == "primary":
+            raise TimeoutError
+        if model == "gone":
+            raise genai_errors.ClientError(404, {"error": {"message": "not found"}}, None)
+        return _Response(SAMPLE_RECIPE)
+
+    llm, calls = _make_llm(behaviour, fallbacks="gone, third")
+    result = await llm.generate(system="s", user="u", schema=RecipeContent)
+    assert result.model == "third"
+    assert calls == ["primary", "gone", "third"]
+
+
+async def test_second_round_recovers_after_a_blip() -> None:
+    failures = {"primary": 1, "fallback": 1}
+
+    def behaviour(model: str) -> Any:
+        if failures[model]:
+            failures[model] -= 1
+            raise _server_error(503)
+        return _Response(SAMPLE_RECIPE)
+
+    llm, calls = _make_llm(behaviour, rounds=2)
+    result = await llm.generate(system="s", user="u", schema=RecipeContent)
+    assert result.model == "primary"
+    assert calls == ["primary", "fallback", "primary"]
+
+
+async def test_failed_model_is_skipped_on_the_next_request() -> None:
+    def behaviour(model: str) -> Any:
+        if model == "primary":
+            raise _server_error(503)
+        return _Response(SAMPLE_RECIPE)
+
+    llm, calls = _make_llm(behaviour)
+    await llm.generate(system="s", user="u", schema=RecipeContent)
+    calls.clear()
+    result = await llm.generate(system="s", user="u", schema=RecipeContent)
+    assert result.model == "fallback"
+    assert calls == ["fallback"]
+
+
+async def test_non_retryable_client_error_is_not_masked() -> None:
+    def behaviour(_model: str) -> Any:
+        raise genai_errors.ClientError(400, {"error": {"message": "bad"}}, None)
+
+    llm, calls = _make_llm(behaviour)
+    with pytest.raises(LLMInvalidResponseError):
+        await llm.generate(system="s", user="u", schema=RecipeContent)
+    assert calls == ["primary"]

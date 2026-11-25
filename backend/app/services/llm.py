@@ -2,9 +2,10 @@
 
 Practices baked in: system instruction separated from user data, JSON schema enforced by the
 provider, Pydantic validation on our side, one corrective retry on invalid output, bounded
-output tokens, thinking disabled for the cheap model, a short per-attempt deadline with one
-fallback to a second model when the primary is slow or overloaded, and token usage logged
-for cost tracking. Prompts are never logged in full.
+output tokens, thinking disabled for the cheap model, a short per-attempt deadline with a
+chain of fallback models when the primary is slow or overloaded (a model that just failed is
+skipped for a while), an overall deadline, and token usage logged for cost tracking. Prompts
+are never logged in full.
 """
 
 import asyncio
@@ -27,6 +28,14 @@ from app.core.errors import LLMInvalidResponseError, LLMUnavailableError
 logger = logging.getLogger(__name__)
 
 RETRYABLE_STATUS = [408, 429, 500, 502, 503, 504]
+# A model that timed out or was overloaded goes to the back of the queue for this long, so the
+# next requests do not each burn a full timeout on it first.
+COOLDOWN_SECONDS = 60.0
+# A model the API does not know (404) is retired for much longer: it will not appear by itself.
+MISSING_MODEL_COOLDOWN_SECONDS = 3600.0
+ROUND_PAUSE_SECONDS = 1.5
+# Not worth starting an attempt with less time than this left.
+MIN_ATTEMPT_SECONDS = 2.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +62,7 @@ class GeminiLLM:
         if not settings.gemini_api_key:
             raise RuntimeError("GEMINI_API_KEY is not configured")
         self._settings = settings
+        self._cooldown_until: dict[str, float] = {}
         self._client = genai.Client(
             api_key=settings.gemini_api_key,
             http_options=types.HttpOptions(
@@ -78,12 +88,13 @@ class GeminiLLM:
             thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
         started = time.perf_counter()
+        deadline = time.monotonic() + s.llm_total_timeout_seconds
         contents: list[types.ContentUnion] = [user]
         last_error: Exception | None = None
-        model = s.gemini_model
+        model: str | None = None
 
         for attempt in range(2):
-            response, model = await self._call_with_fallback(model, contents, config)
+            response, model = await self._call_with_fallback(model, contents, config, deadline)
 
             usage = response.usage_metadata
             prompt_tokens = usage.prompt_token_count if usage else None
@@ -95,7 +106,7 @@ class GeminiLLM:
                 last_error = exc
                 logger.warning(
                     "llm invalid output model=%s attempt=%d errors=%d",
-                    s.gemini_model,
+                    model,
                     attempt + 1,
                     exc.error_count(),
                 )
@@ -128,43 +139,89 @@ class GeminiLLM:
 
         raise LLMInvalidResponseError() from last_error
 
+    def _models(self) -> list[str]:
+        s = self._settings
+        names = [s.gemini_model, *s.gemini_fallback_models.replace(",", " ").split()]
+        return list(dict.fromkeys(names))
+
+    def _ordered_candidates(self, preferred: str | None) -> list[str]:
+        """Healthy models in configured order first, then the ones cooling down.
+
+        `preferred` (the model that produced the previous, invalid answer) goes first so the
+        corrective retry talks to the same model that saw the conversation.
+        """
+        now = time.monotonic()
+        models = self._models()
+        healthy = [m for m in models if self._cooldown_until.get(m, 0.0) <= now]
+        cooling = sorted(
+            (m for m in models if m not in healthy), key=lambda m: self._cooldown_until[m]
+        )
+        ordered = healthy + cooling
+        if preferred in ordered:
+            ordered.remove(preferred)
+            ordered.insert(0, preferred)
+        return ordered
+
+    def _cool_down(self, model: str, seconds: float = COOLDOWN_SECONDS) -> None:
+        self._cooldown_until[model] = time.monotonic() + seconds
+
     async def _call_with_fallback(
         self,
-        model: str,
+        preferred: str | None,
         contents: list[types.ContentUnion],
         config: types.GenerateContentConfig,
+        deadline: float,
     ) -> tuple[types.GenerateContentResponse, str]:
-        """One attempt on `model`; on timeout/overload one more on the fallback model.
+        """Walk the model chain until one answers, within `deadline` (time.monotonic()).
 
-        Returns the response and the model that actually produced it.
+        Timeouts, overload (429/5xx) and unknown models (404) move on to the next model; the
+        whole chain is retried after a short pause up to `llm_retry_rounds` times. Returns the
+        response and the model that actually produced it.
         """
         s = self._settings
-        candidates = [model]
-        if s.gemini_fallback_model and s.gemini_fallback_model != model:
-            candidates.append(s.gemini_fallback_model)
-
         last_exc: Exception | None = None
-        for name in candidates:
-            try:
-                async with asyncio.timeout(s.llm_timeout_seconds + 1):
-                    response = await self._client.aio.models.generate_content(
-                        model=name, contents=contents, config=self._config_for(name, config)
-                    )
-                return response, name
-            # httpx errors are not asyncio.TimeoutError: the SDK's own HTTP deadline fires
-            # before ours, and an uncaught ReadTimeout here would be a 500 instead of a 503.
-            except (TimeoutError, httpx.TransportError, genai_errors.ServerError) as exc:
-                last_exc = exc
-                logger.warning(
-                    "llm slow/unavailable model=%s error=%s: %s", name, type(exc).__name__, exc
-                )
-            except genai_errors.ClientError as exc:
-                if exc.code in RETRYABLE_STATUS:
+
+        for round_no in range(max(1, s.llm_retry_rounds)):
+            if round_no:
+                if deadline - time.monotonic() < ROUND_PAUSE_SECONDS + MIN_ATTEMPT_SECONDS:
+                    break
+                await asyncio.sleep(ROUND_PAUSE_SECONDS)
+            for name in self._ordered_candidates(preferred):
+                remaining = deadline - time.monotonic()
+                if remaining < MIN_ATTEMPT_SECONDS:
+                    raise LLMUnavailableError() from last_exc
+                try:
+                    async with asyncio.timeout(min(s.llm_timeout_seconds + 1, remaining)):
+                        response = await self._client.aio.models.generate_content(
+                            model=name, contents=contents, config=self._config_for(name, config)
+                        )
+                    self._cooldown_until.pop(name, None)
+                    return response, name
+                # httpx errors are not asyncio.TimeoutError: the SDK's own HTTP deadline fires
+                # before ours, and an uncaught ReadTimeout here would be a 500 instead of a 503.
+                except (TimeoutError, httpx.TransportError, genai_errors.ServerError) as exc:
                     last_exc = exc
-                    logger.warning("llm rate limited model=%s code=%s", name, exc.code)
-                    continue
-                logger.error("llm client error model=%s code=%s", name, exc.code)
-                raise LLMInvalidResponseError() from exc
+                    self._cool_down(name)
+                    logger.warning(
+                        "llm slow/unavailable model=%s round=%d error=%s: %s",
+                        name,
+                        round_no + 1,
+                        type(exc).__name__,
+                        exc,
+                    )
+                except genai_errors.ClientError as exc:
+                    if exc.code in RETRYABLE_STATUS:
+                        last_exc = exc
+                        self._cool_down(name)
+                        logger.warning("llm rate limited model=%s code=%s", name, exc.code)
+                        continue
+                    if exc.code == 404:
+                        last_exc = exc
+                        self._cool_down(name, MISSING_MODEL_COOLDOWN_SECONDS)
+                        logger.error("llm model not found, skipping model=%s", name)
+                        continue
+                    logger.error("llm client error model=%s code=%s", name, exc.code)
+                    raise LLMInvalidResponseError() from exc
         raise LLMUnavailableError() from last_exc
 
     def _config_for(

@@ -71,7 +71,7 @@ even when fields coincide.
 
 **Configuration.** Only through `Settings` (pydantic-settings): `.env` locally, environment variables in Cloud Run.
 Database parts (`DB_HOST`, `DB_USER`, …) or a full `DATABASE_URL`; `DB_HOST` starting with `/` is a Cloud SQL unix
-socket. `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `LLM_TIMEOUT_SECONDS` control the model client.
+socket. `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `LLM_TIMEOUT_SECONDS`, `LLM_TOTAL_TIMEOUT_SECONDS`, `LLM_RETRY_ROUNDS` control the model client.
 
 **Endpoints.**
 
@@ -170,7 +170,7 @@ still does, the request fails with 502 and nothing is stored. Allergy names are 
 
 | Concern | Mechanism |
 |---|---|
-| slow or overloaded model | 12 s per-attempt deadline; on timeout / 503 / 504 one attempt on `GEMINI_FALLBACK_MODEL` |
+| slow or overloaded model | 15 s per-attempt deadline; on timeout / 429 / 5xx / 404 the next model in `GEMINI_FALLBACK_MODELS`; a failed model is skipped for 60 s; up to 2 passes over the chain within a 50 s total budget (Firebase Hosting cuts at 60 s) |
 | invalid JSON | one corrective retry, then 502 |
 | rate limits (429) | treated as unavailable → fallback → 503 |
 | cost | cheapest open model by default; thinking disabled (`thinking_budget=0`) **on the primary model only** - the fallback answers 400 to that flag; `max_output_tokens=2048`; one candidate |

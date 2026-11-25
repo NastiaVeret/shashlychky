@@ -31,10 +31,17 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     # Cheapest Gemini model available to new API keys (2.5 Flash-Lite is closed to new users).
     gemini_model: str = "gemini-3.1-flash-lite"
-    # Used once when the primary model times out or is overloaded (503/504). Empty disables it.
-    gemini_fallback_model: str | None = "gemini-3.5-flash-lite"
-    # Per-attempt deadline. Flash-Lite answers in 2-6 s; a hung attempt is abandoned and retried.
-    llm_timeout_seconds: float = 12.0
+    # Tried in order when the primary times out, is overloaded (429/5xx) or does not exist (404).
+    # Separated by spaces or commas (Cloud Run deploy splits env vars on commas: use spaces there).
+    # Empty disables fallback.
+    gemini_fallback_models: str = "gemini-3.5-flash-lite gemini-3.5-flash gemini-2.5-flash"
+    # Per-attempt deadline. Flash-Lite answers in 2-6 s; a hung attempt is abandoned for the next.
+    llm_timeout_seconds: float = 15.0
+    # Budget for the whole generation incl. fallbacks and retries. Firebase Hosting cuts proxied
+    # requests at 60 s, so stay under it to answer with a clean 503 instead of a gateway error.
+    llm_total_timeout_seconds: float = 50.0
+    # Passes over the model chain before giving up (a short pause between passes).
+    llm_retry_rounds: int = 2
     llm_max_output_tokens: int = 2048
     llm_temperature: float = 0.6
 
