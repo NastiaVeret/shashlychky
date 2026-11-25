@@ -1,10 +1,12 @@
 """Fallback behaviour of GeminiLLM, with the SDK call stubbed out."""
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 from google.genai import errors as genai_errors
+from google.genai import types
 
 from app.core.config import Settings
 from app.core.errors import LLMInvalidResponseError, LLMUnavailableError
@@ -75,8 +77,8 @@ async def test_overloaded_primary_falls_back_once() -> None:
     assert calls == ["primary", "fallback"]
 
 
-async def test_fallback_call_drops_thinking_config() -> None:
-    """gemini-3.5-flash-lite answers 400 to thinking_budget=0, so the fallback must not send it."""
+async def test_fallback_call_uses_thinking_level_not_budget() -> None:
+    """Gemini 3.x answers 400 to thinking_budget=0; fallbacks ask for minimal thinking instead."""
     settings = Settings(
         gemini_api_key="test",
         gemini_model="primary",
@@ -96,7 +98,8 @@ async def test_fallback_call_drops_thinking_config() -> None:
     await llm.generate(system="s", user="u", schema=RecipeContent)
 
     assert configs["primary"].thinking_config.thinking_budget == 0
-    assert configs["fallback"].thinking_config is None
+    assert configs["fallback"].thinking_config.thinking_budget is None
+    assert configs["fallback"].thinking_config.thinking_level == types.ThinkingLevel.MINIMAL
 
 
 async def test_both_models_down_raises_unavailable() -> None:
@@ -161,7 +164,68 @@ async def test_model_rejecting_the_request_is_skipped() -> None:
     llm, calls = _make_llm(behaviour)
     result = await llm.generate(system="s", user="u", schema=RecipeContent)
     assert result.model == "fallback"
+    # Once with the thinking config, once without it, then the next model.
+    assert calls == ["primary", "primary", "fallback"]
+
+
+async def test_thinking_config_rejection_retries_same_model_without_it() -> None:
+    settings = Settings(
+        gemini_api_key="test",
+        gemini_model="primary",
+        gemini_fallback_models="fallback",
+        llm_timeout_seconds=1,
+        llm_retry_rounds=1,
+    )
+    llm = GeminiLLM(settings)
+    seen: list[tuple[str, Any]] = []
+
+    async def fake_generate(*, model: str, contents: Any, config: Any) -> Any:
+        seen.append((model, config.thinking_config))
+        if model == "primary":
+            raise _server_error(503)
+        if config.thinking_config is not None:
+            raise genai_errors.ClientError(400, {"error": {"message": "thinking"}}, None)
+        return _Response(SAMPLE_RECIPE)
+
+    llm._client.aio.models.generate_content = fake_generate  # type: ignore[method-assign]
+    result = await llm.generate(system="s", user="u", schema=RecipeContent)
+    assert result.model == "fallback"
+    assert [m for m, _ in seen] == ["primary", "fallback", "fallback"]
+    assert seen[-1][1] is None
+
+
+async def test_slow_model_is_hedged_and_fastest_answer_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(llm_module, "HEDGE_AFTER_SECONDS", 0.05)
+    settings = Settings(
+        gemini_api_key="test",
+        gemini_model="primary",
+        gemini_fallback_models="fallback",
+        llm_timeout_seconds=5,
+        llm_retry_rounds=1,
+    )
+    llm = GeminiLLM(settings)
+    calls: list[str] = []
+    primary_cancelled = asyncio.Event()
+
+    async def fake_generate(*, model: str, contents: Any, config: Any) -> Any:
+        calls.append(model)
+        if model == "primary":
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                primary_cancelled.set()
+                raise
+        return _Response(SAMPLE_RECIPE)
+
+    llm._client.aio.models.generate_content = fake_generate  # type: ignore[method-assign]
+    result = await asyncio.wait_for(
+        llm.generate(system="s", user="u", schema=RecipeContent), timeout=2
+    )
+    assert result.model == "fallback"
     assert calls == ["primary", "fallback"]
+    assert primary_cancelled.is_set()
 
 
 async def test_key_level_client_error_is_not_masked() -> None:

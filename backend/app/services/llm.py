@@ -11,6 +11,7 @@ are never logged in full.
 import asyncio
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Annotated, Protocol
@@ -37,6 +38,20 @@ MISSING_MODEL_COOLDOWN_SECONDS = 3600.0
 ROUND_PAUSE_SECONDS = 2.0
 # Not worth starting an attempt with less time than this left.
 MIN_ATTEMPT_SECONDS = 2.0
+# Hedging: a model that has not answered after this long gets company from the next model in
+# the chain; the first valid answer wins and the rest are cancelled. Flash-Lite answers a recipe
+# in 2-6 s, so a slower one is likely stuck in an overloaded queue.
+HEDGE_AFTER_SECONDS = 6.0
+MAX_PARALLEL_CALLS = 3
+
+
+class _ModelFailedError(Exception):
+    """One model could not serve this call; `retry_now` means try the same model again."""
+
+    def __init__(self, cause: Exception, *, retry_now: bool = False) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.retry_now = retry_now
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +79,8 @@ class GeminiLLM:
             raise RuntimeError("GEMINI_API_KEY is not configured")
         self._settings = settings
         self._cooldown_until: dict[str, float] = {}
+        # Index into `_thinking_variants(model)`: advanced when a model rejects a thinking config.
+        self._thinking_variant: dict[str, int] = {}
         self._client = genai.Client(
             api_key=settings.gemini_api_key,
             http_options=types.HttpOptions(
@@ -173,78 +190,152 @@ class GeminiLLM:
         config: types.GenerateContentConfig,
         deadline: float,
     ) -> tuple[types.GenerateContentResponse, str]:
-        """Walk the model chain until one answers, within `deadline` (time.monotonic()).
+        """Get one answer from the model chain within `deadline` (time.monotonic()).
 
-        Timeouts, overload (429/5xx) and unknown models (404) move on to the next model; the
-        whole chain is retried after a short pause up to `llm_retry_rounds` times. Returns the
-        response and the model that actually produced it.
+        Each pass races the chain with hedging (see `_race`); a failed pass is repeated after a
+        short pause up to `llm_retry_rounds` times. Returns the response and its model.
         """
         s = self._settings
         last_exc: Exception | None = None
-
         for round_no in range(max(1, s.llm_retry_rounds)):
             if round_no:
                 if deadline - time.monotonic() < ROUND_PAUSE_SECONDS + MIN_ATTEMPT_SECONDS:
                     break
                 await asyncio.sleep(ROUND_PAUSE_SECONDS)
-            for name in self._ordered_candidates(preferred):
-                remaining = deadline - time.monotonic()
-                if remaining < MIN_ATTEMPT_SECONDS:
-                    raise LLMUnavailableError() from last_exc
-                try:
-                    async with asyncio.timeout(min(s.llm_timeout_seconds + 1, remaining)):
-                        response = await self._client.aio.models.generate_content(
-                            model=name, contents=contents, config=self._config_for(name, config)
-                        )
-                    self._cooldown_until.pop(name, None)
-                    return response, name
-                # httpx errors are not asyncio.TimeoutError: the SDK's own HTTP deadline fires
-                # before ours, and an uncaught ReadTimeout here would be a 500 instead of a 503.
-                except (TimeoutError, httpx.TransportError, genai_errors.ServerError) as exc:
-                    last_exc = exc
-                    self._cool_down(name)
-                    logger.warning(
-                        "llm slow/unavailable model=%s round=%d error=%s: %s",
-                        name,
-                        round_no + 1,
-                        type(exc).__name__,
-                        exc,
-                    )
-                except genai_errors.ClientError as exc:
-                    if exc.code in RETRYABLE_STATUS:
-                        last_exc = exc
-                        self._cool_down(name)
-                        logger.warning("llm rate limited model=%s code=%s", name, exc.code)
-                        continue
-                    # 404: the model is gone or not open to this key. 400: this model rejects
-                    # our request (schema, config). Either way another model may still serve it;
-                    # only key-level errors (401/403) are the same for every model.
-                    if exc.code in (400, 404):
-                        last_exc = exc
-                        self._cool_down(name, MISSING_MODEL_COOLDOWN_SECONDS)
-                        logger.error(
-                            "llm model unusable, skipping model=%s code=%s: %s",
-                            name,
-                            exc.code,
-                            exc.message,
-                        )
-                        continue
-                    logger.error("llm client error model=%s code=%s", name, exc.code)
-                    raise LLMInvalidResponseError() from exc
+            result, exc = await self._race(
+                self._ordered_candidates(preferred), contents, config, deadline
+            )
+            if result is not None:
+                return result
+            last_exc = exc or last_exc
         raise LLMUnavailableError() from last_exc
+
+    async def _race(
+        self,
+        candidates: list[str],
+        contents: list[types.ContentUnion],
+        config: types.GenerateContentConfig,
+        deadline: float,
+    ) -> tuple[tuple[types.GenerateContentResponse, str] | None, Exception | None]:
+        """Start models in order: the next one when a running call fails or is slower than
+        HEDGE_AFTER_SECONDS, at most MAX_PARALLEL_CALLS at once. First success wins."""
+        queue = deque(candidates)
+        running: dict[asyncio.Task[types.GenerateContentResponse], str] = {}
+        last_exc: Exception | None = None
+
+        def launch() -> None:
+            name = queue.popleft()
+            task = asyncio.create_task(self._attempt(name, contents, config, deadline))
+            running[task] = name
+
+        try:
+            while queue or running:
+                remaining = deadline - time.monotonic()
+                if remaining < MIN_ATTEMPT_SECONDS and not running:
+                    break
+                if not running:
+                    launch()
+                wait_for = max(remaining, 0.0)
+                if queue and len(running) < MAX_PARALLEL_CALLS:
+                    wait_for = min(wait_for, HEDGE_AFTER_SECONDS)
+                done, _ = await asyncio.wait(
+                    running, timeout=wait_for, return_when=asyncio.FIRST_COMPLETED
+                )
+                if not done:
+                    if time.monotonic() >= deadline:
+                        break
+                    if queue and len(running) < MAX_PARALLEL_CALLS:
+                        logger.info("llm slow, hedging with model=%s", queue[0])
+                        launch()
+                    continue
+                for task in done:
+                    name = running.pop(task)
+                    try:
+                        response = task.result()
+                    except _ModelFailedError as failed:
+                        last_exc = failed.cause
+                        if failed.retry_now:
+                            queue.appendleft(name)
+                        # A failure frees a slot: start the next model right away.
+                        if queue and running and len(running) < MAX_PARALLEL_CALLS:
+                            launch()
+                        continue
+                    return (response, name), None
+        finally:
+            for task in running:
+                task.cancel()
+            if running:
+                await asyncio.gather(*running, return_exceptions=True)
+        return None, last_exc
+
+    async def _attempt(
+        self,
+        name: str,
+        contents: list[types.ContentUnion],
+        config: types.GenerateContentConfig,
+        deadline: float,
+    ) -> types.GenerateContentResponse:
+        """One call to one model. Raises `_ModelFailedError` for anything another model may fix."""
+        s = self._settings
+        remaining = deadline - time.monotonic()
+        try:
+            async with asyncio.timeout(min(s.llm_timeout_seconds + 1, max(remaining, 0.1))):
+                response = await self._client.aio.models.generate_content(
+                    model=name, contents=contents, config=self._config_for(name, config)
+                )
+        # httpx errors are not asyncio.TimeoutError: the SDK's own HTTP deadline fires before
+        # ours, and an uncaught ReadTimeout here would be a 500 instead of a 503.
+        except (TimeoutError, httpx.TransportError, genai_errors.ServerError) as exc:
+            self._cool_down(name)
+            logger.warning(
+                "llm slow/unavailable model=%s error=%s: %s", name, type(exc).__name__, exc
+            )
+            raise _ModelFailedError(exc) from exc
+        except genai_errors.ClientError as exc:
+            if exc.code in RETRYABLE_STATUS:
+                self._cool_down(name)
+                logger.warning("llm rate limited model=%s code=%s", name, exc.code)
+                raise _ModelFailedError(exc) from exc
+            if exc.code == 400 and self._next_thinking_variant(name):
+                logger.warning("llm model=%s rejected thinking config, retrying without", name)
+                raise _ModelFailedError(exc, retry_now=True) from exc
+            # 404: the model is gone or not open to this key. 400: this model rejects our
+            # request. Either way another model may still serve it; only key-level errors
+            # (401/403) are the same for every model.
+            if exc.code in (400, 404):
+                self._cool_down(name, MISSING_MODEL_COOLDOWN_SECONDS)
+                logger.error(
+                    "llm model unusable, skipping model=%s code=%s: %s", name, exc.code, exc.message
+                )
+                raise _ModelFailedError(exc) from exc
+            logger.error("llm client error model=%s code=%s", name, exc.code)
+            raise LLMInvalidResponseError() from exc
+        self._cooldown_until.pop(name, None)
+        return response
+
+    def _thinking_variants(self, model: str) -> list[types.ThinkingConfig | None]:
+        """Ways to keep thinking (latency and cost) at the floor, most effective first.
+
+        Gemini 2.x takes `thinking_budget=0`; 3.x models answer 400 to it and want
+        `thinking_level` instead. Unknown models get tried in order; `None` (provider default)
+        is the last resort so a model that rejects both still answers.
+        """
+        if model == self._settings.gemini_model:
+            return [types.ThinkingConfig(thinking_budget=0), None]
+        return [types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL), None]
+
+    def _next_thinking_variant(self, model: str) -> bool:
+        index = self._thinking_variant.get(model, 0)
+        if index + 1 >= len(self._thinking_variants(model)):
+            return False
+        self._thinking_variant[model] = index + 1
+        return True
 
     def _config_for(
         self, model: str, config: types.GenerateContentConfig
     ) -> types.GenerateContentConfig:
-        """`thinking_budget=0` is only known to work on the primary model.
-
-        The fallback (a newer Flash-Lite) answers 400 INVALID_ARGUMENT to it, which used to turn
-        every slow primary into a 502 for the user. Outside the primary we leave the provider
-        defaults alone: a working answer beats the few tokens thinking costs on a rare fallback.
-        """
-        if model == self._settings.gemini_model:
-            return config
-        return config.model_copy(update={"thinking_config": None})
+        thinking = self._thinking_variants(model)[self._thinking_variant.get(model, 0)]
+        return config.model_copy(update={"thinking_config": thinking})
 
     @staticmethod
     def _parse[T: BaseModel](response: types.GenerateContentResponse, schema: type[T]) -> T:
