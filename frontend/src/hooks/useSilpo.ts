@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  addToSilpoCart,
   deleteSilpoConnection,
   getSilpoConnection,
   silpoKeys,
@@ -33,4 +34,9 @@ export function useDisconnectSilpo() {
       qc.setQueryData(silpoKeys.connection, disconnected);
     },
   });
+}
+
+/** Adds products to the user's Silpo cart. Nothing is cached: Silpo's cart is the source of truth. */
+export function useAddToSilpoCart() {
+  return useMutation({ mutationFn: addToSilpoCart });
 }

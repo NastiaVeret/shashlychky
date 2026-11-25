@@ -68,6 +68,13 @@ class ProductDataUnavailableError(AppError):
     detail = "Дані про товари з Сільпо тимчасово недоступні. Спробуйте пізніше."
 
 
+class SilpoAccountUnusableError(ProductDataUnavailableError):
+    """The user's own Silpo account cannot be searched (login gone, or no store picked yet).
+    Callers that have the shared service account to fall back to catch this one."""
+
+    detail = "Ваш акаунт Сільпо зараз недоступний для пошуку товарів."
+
+
 class NutritionUnavailableError(ProductDataUnavailableError):
     detail = "Дані про КБЖВ з Сільпо тимчасово недоступні. Спробуйте пізніше."
 
@@ -77,6 +84,18 @@ class SilpoConnectError(AppError):
 
     status_code = 503
     detail = "Не вдалося підключити Сільпо. Спробуйте ще раз."
+
+
+class SilpoNotConnectedForCartError(ConflictError):
+    """The cart is the user's own: without their Silpo login there is nowhere to put products."""
+
+    detail = "Підключіть акаунт Сільпо в профілі, щоб додавати товари в кошик."
+
+
+class SilpoCartBlockedError(ConflictError):
+    """Silpo is up, but the user's cart cannot take products now (no address, no delivery slot)."""
+
+    detail = "Кошик Сільпо зараз не приймає товари. Спробуйте пізніше."
 
 
 class LLMInvalidResponseError(AppError):

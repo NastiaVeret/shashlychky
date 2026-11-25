@@ -677,7 +677,7 @@
           "recipes"
         ],
         "summary": "Read Recipe Shopping List",
-        "description": "What to buy at Silpo for the ingredients the user does not have: product, packs or kg,\nprice, and vetted alternatives when a product is out of stock or short.",
+        "description": "What to buy at Silpo for the ingredients the user does not have: product, packs or kg,\nprice, and vetted alternatives when a product is out of stock or short. With the user's own\nSilpo account connected, it is searched in their store (`priced_in: your_store`), so the\nproducts can go straight into their cart.",
         "operationId": "read_recipe_shopping_list_api_v1_recipes__recipe_id__shopping_list_get",
         "parameters": [
           {
@@ -868,6 +868,66 @@
           }
         }
       }
+    },
+    "/api/v1/silpo/cart": {
+      "post": {
+        "tags": [
+          "silpo"
+        ],
+        "summary": "Add To Cart",
+        "description": "Put shopping-list products into the user's own Silpo cart. The answer is what the cart\nholds afterwards. 409 if Silpo is not connected or the cart cannot take products now.",
+        "operationId": "add_to_cart_api_v1_silpo_cart_post",
+        "parameters": [
+          {
+            "name": "__session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartAddRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartAddResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1027,6 +1087,98 @@
         ],
         "title": "Alternative",
         "description": "Another product that could replace the pick. Picking the best one is not done here."
+      },
+      "CartAddRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CartItem"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "CartAddRequest",
+        "description": "Products from a shopping list to put into the user's own Silpo cart."
+      },
+      "CartAddResult": {
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added",
+            "description": "productId, які тепер є в кошику"
+          },
+          "not_added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Not Added",
+            "description": "productId, яких у кошику немає після додавання"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "description": "Що варто знати перед оформленням, українською"
+          },
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url",
+            "description": "Посилання на оформлення в Сільпо; є лише для кошика, який можна оформити"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "not_added",
+          "notes",
+          "checkout_url"
+        ],
+        "title": "CartAddResult",
+        "description": "What is in the cart after adding: Silpo's cart is read back, nothing is assumed."
+      },
+      "CartItem": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Product Id",
+            "description": "productId товару в Сільпо"
+          },
+          "quantity": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity",
+            "description": "Упаковок, а для вагових товарів кг"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "quantity"
+        ],
+        "title": "CartItem"
       },
       "DbHealthResponse": {
         "properties": {
@@ -1689,14 +1841,23 @@
       },
       "RecipeRequest": {
         "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "from_home",
+              "buy_all"
+            ],
+            "title": "Mode",
+            "default": "from_home"
+          },
           "products": {
             "items": {
               "type": "string"
             },
             "type": "array",
             "maxItems": 30,
-            "minItems": 1,
-            "title": "Products"
+            "title": "Products",
+            "default": []
           },
           "preferences": {
             "anyOf": [
@@ -1719,9 +1880,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "products"
-        ],
         "title": "RecipeRequest"
       },
       "RecipeShoppingList": {
@@ -1753,6 +1911,15 @@
             "type": "integer",
             "title": "Needs Attention",
             "description": "Рядки, де є проблема: немає, мало або фасування"
+          },
+          "priced_in": {
+            "type": "string",
+            "enum": [
+              "your_store",
+              "default_store"
+            ],
+            "title": "Priced In",
+            "description": "Чий магазин: користувача (можна класти в кошик) чи спільний (орієнтовно)"
           }
         },
         "type": "object",
@@ -1760,7 +1927,8 @@
           "recipe_id",
           "lines",
           "total_price",
-          "needs_attention"
+          "needs_attention",
+          "priced_in"
         ],
         "title": "RecipeShoppingList"
       },

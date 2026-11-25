@@ -7,20 +7,30 @@ already vetted against the user's allergies. Choosing the best alternative is de
 open: the order is only "enough stock first, then Silpo's own order".
 """
 
+import logging
 from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import SilpoAccountUnusableError
 from app.integrations.silpo.catalog import Candidate, IngredientMatch, ProductCatalog
 from app.models.user import User
 from app.schemas.recipes import IngredientRead, RecipeRead
-from app.schemas.shopping import Alternative, ProductOption, RecipeShoppingList, ShoppingLine
+from app.schemas.shopping import (
+    Alternative,
+    PricedIn,
+    ProductOption,
+    RecipeShoppingList,
+    ShoppingLine,
+)
 from app.services.catalog import CatalogProvider
 from app.services.packaging import has_enough_stock, plan_purchase
 from app.services.product_allergens import check_ingredient, product_check_allergies
 from app.services.profiles import get_profile
 from app.services.recipes import get_recipe
 from app.services.units import to_grams
+
+logger = logging.getLogger(__name__)
 
 MAX_ALTERNATIVES = 3
 _PROBLEMS = {"no_product", "out_of_stock", "partial_stock", "unknown_package"}
@@ -134,7 +144,9 @@ async def _lookup_line(
     )
 
 
-def build_shopping_list(recipe_id: int, lines: list[ShoppingLine]) -> RecipeShoppingList:
+def build_shopping_list(
+    recipe_id: int, lines: list[ShoppingLine], priced_in: PricedIn = "default_store"
+) -> RecipeShoppingList:
     totals = [
         line.purchase.total_price
         for line in lines
@@ -145,6 +157,7 @@ def build_shopping_list(recipe_id: int, lines: list[ShoppingLine]) -> RecipeShop
         lines=lines,
         total_price=round(sum(totals), 2) if totals else None,
         needs_attention=sum(line.status in _PROBLEMS for line in lines),
+        priced_in=priced_in,
     )
 
 
@@ -171,10 +184,25 @@ async def shopping_lines(
 
 
 async def recipe_shopping_list(
-    db: AsyncSession, provider: CatalogProvider, recipe_id: int, user: User | None
+    db: AsyncSession,
+    provider: CatalogProvider,
+    recipe_id: int,
+    user: User | None,
+    user_provider: CatalogProvider | None = None,
 ) -> RecipeShoppingList:
     """Raises ProductDataUnavailableError (503) when Silpo cannot be asked: without it there is
-    nothing honest to put on the list."""
+    nothing honest to put on the list.
+
+    `user_provider` searches the user's own Silpo account: its products are the ones their cart
+    accepts, at their store's prices. When that account cannot be searched (login gone, no
+    address picked) the list falls back to the shared store and says so in `priced_in`.
+    """
     content = RecipeRead.from_model(await get_recipe(db, recipe_id))
     allergies = product_check_allergies(get_profile(user)) if user else []
+    if user_provider is not None:
+        try:
+            lines = await shopping_lines(user_provider, content, allergies)
+            return build_shopping_list(recipe_id, lines, "your_store")
+        except SilpoAccountUnusableError:
+            logger.info("user's silpo account is not searchable, using the shared store")
     return build_shopping_list(recipe_id, await shopping_lines(provider, content, allergies))

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -9,8 +10,12 @@ from typing import Any
 import httpx
 import pytest
 
-from app.core.errors import NutritionUnavailableError, ProductDataUnavailableError
-from app.integrations.silpo import SilpoError
+from app.core.errors import (
+    NutritionUnavailableError,
+    ProductDataUnavailableError,
+    SilpoAccountUnusableError,
+)
+from app.integrations.silpo import NoStoreSelectedError, SilpoError
 from app.integrations.silpo.catalog import ProductCatalog
 from app.services import catalog as catalog_service
 from app.services.catalog import ConnectedCatalogProvider
@@ -182,3 +187,33 @@ async def test_cancellation_is_never_swallowed(
 ) -> None:
     with pytest.raises(type(error)):
         await ConnectedCatalogProvider("https://x").run(_fails_with(error))
+
+
+# ---------- searching as the user (their own store) ----------
+
+
+class NoStoreSilpo:
+    async def search_context(self) -> dict[str, Any]:
+        raise NoStoreSelectedError()
+
+
+@pytest.fixture
+def no_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    @asynccontextmanager
+    async def fake_connect(*_: object, **__: object):  # type: ignore[no-untyped-def]
+        yield NoStoreSilpo()
+
+    monkeypatch.setattr(catalog_service, "connect", fake_connect)
+    monkeypatch.setattr(catalog_service, "get_sessionmaker", lambda: None)
+
+
+async def test_users_account_without_store_is_unusable_not_down(no_store: None) -> None:
+    provider = ConnectedCatalogProvider("https://x", user_id=uuid.uuid4())
+    with pytest.raises(SilpoAccountUnusableError):
+        await provider.run(lambda catalog: catalog.context())
+
+
+async def test_shared_account_without_store_is_plain_unavailable(no_store: None) -> None:
+    with pytest.raises(ProductDataUnavailableError) as caught:
+        await ConnectedCatalogProvider("https://x").run(lambda catalog: catalog.context())
+    assert not isinstance(caught.value, SilpoAccountUnusableError)
