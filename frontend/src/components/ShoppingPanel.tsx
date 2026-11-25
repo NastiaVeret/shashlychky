@@ -1,6 +1,10 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { Alternative, Purchase, ShoppingLine } from '../api/recipes';
+import type { CartAddResult, CartItem } from '../api/silpo';
+import { useMe } from '../hooks/useAuth';
 import { useRecipeShoppingList } from '../hooks/useRecipes';
+import { useAddToSilpoCart, useSilpoConnection } from '../hooks/useSilpo';
 
 const STATUS_NOTE: Record<ShoppingLine['status'], string> = {
   at_home: 'вже є вдома',
@@ -37,6 +41,116 @@ function gramsNote(line: ShoppingLine): string | null {
   }
 }
 
+type CartState = 'added' | 'not_added';
+
+/** What goes to the cart for a line: only a ready pick with an amount to buy. A short-stock line
+ * (`partial_stock`) is left out: Silpo would refuse the full amount. */
+function cartItem(line: ShoppingLine): CartItem | null {
+  if (line.status !== 'ok' || !line.product?.product_id || !line.purchase) return null;
+  return { product_id: line.product.product_id, quantity: line.purchase.quantity };
+}
+
+const SMALL_BUTTON =
+  'focus:ring-accent-500 min-h-9 rounded-lg border border-olive-800 px-3 text-sm font-semibold text-olive-800 transition hover:bg-cream-100 focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50';
+
+function CartButton({
+  state,
+  disabled,
+  onAdd,
+}: {
+  state: CartState | undefined;
+  disabled: boolean;
+  onAdd: () => void;
+}) {
+  if (state === 'added') {
+    return <span className="text-sm font-semibold text-olive-800">✓ У кошику</span>;
+  }
+  if (state === 'not_added') {
+    return <span className="text-accent-600 text-sm font-medium">не додано</span>;
+  }
+  return (
+    <button type="button" onClick={onAdd} disabled={disabled} className={SMALL_BUTTON}>
+      У кошик
+    </button>
+  );
+}
+
+function CartNotice({
+  pricedIn,
+  loggedIn,
+  connected,
+}: {
+  pricedIn: 'your_store' | 'default_store';
+  loggedIn: boolean;
+  connected: boolean | undefined;
+}) {
+  const link = 'font-medium underline hover:text-olive-800';
+  if (pricedIn === 'your_store') {
+    return <p className="text-sm text-olive-800">Ціни й наявність у вашому магазині Сільпо.</p>;
+  }
+  if (!loggedIn) {
+    return (
+      <p className="text-sm text-olive-800">
+        Ціни орієнтовні.{' '}
+        <Link to="/login" className={link}>
+          Увійдіть
+        </Link>{' '}
+        і підключіть Сільпо, щоб бачити ціни свого магазину й класти товари в кошик одним кліком.
+      </p>
+    );
+  }
+  if (connected === false) {
+    return (
+      <p className="text-sm text-olive-800">
+        Ціни орієнтовні.{' '}
+        <Link to="/profile" className={link}>
+          Підключіть Сільпо
+        </Link>
+        , щоб бачити ціни свого магазину й класти товари в кошик одним кліком.
+      </p>
+    );
+  }
+  if (connected) {
+    return (
+      <p className="text-sm text-olive-800">
+        Ваш акаунт Сільпо зараз недоступний для пошуку (наприклад, у ньому не вибрано адресу
+        доставки), тому ціни орієнтовні, а додати товари в кошик не вийде.
+      </p>
+    );
+  }
+  return null;
+}
+
+function CartOutcome({ result }: { result: CartAddResult }) {
+  return (
+    <div className="bg-cream-100 space-y-1 rounded-xl px-4 py-3 text-sm text-olive-900">
+      {result.notes.map((note) => (
+        <p key={note}>{note}</p>
+      ))}
+      {result.checkout_url ? (
+        <a
+          href={result.checkout_url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-block font-semibold underline hover:text-olive-800"
+        >
+          Оформити замовлення в Сільпо →
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function cartItems(lines: ShoppingLine[]): CartItem[] {
+  // One entry per product: two ingredients can resolve to the same Silpo product.
+  const byId = new Map<string, CartItem>();
+  for (const line of lines) {
+    const item = cartItem(line);
+    if (item && !byId.has(item.product_id)) byId.set(item.product_id, item);
+  }
+  return [...byId.values()];
+}
+
 function AlternativeRow({ alt }: { alt: Alternative }) {
   return (
     <li className="py-1.5 text-sm">
@@ -71,7 +185,13 @@ function AlternativeRow({ alt }: { alt: Alternative }) {
   );
 }
 
-function Line({ line }: { line: ShoppingLine }) {
+interface LineCart {
+  state: CartState | undefined;
+  disabled: boolean;
+  onAdd: () => void;
+}
+
+function Line({ line, cart }: { line: ShoppingLine; cart: LineCart | null }) {
   const note = STATUS_NOTE[line.status];
   const quiet = line.status === 'at_home' || line.status === 'to_taste';
   return (
@@ -86,13 +206,16 @@ function Line({ line }: { line: ShoppingLine }) {
             </span>
           ) : null}
         </span>
-        {line.purchase ? (
-          <span
-            className={line.status === 'ok' ? 'font-semibold text-olive-800' : 'text-olive-600'}
-          >
-            {purchaseText(line.purchase)}
-          </span>
-        ) : null}
+        <span className="flex items-center gap-3">
+          {line.purchase ? (
+            <span
+              className={line.status === 'ok' ? 'font-semibold text-olive-800' : 'text-olive-600'}
+            >
+              {purchaseText(line.purchase)}
+            </span>
+          ) : null}
+          {cart ? <CartButton {...cart} /> : null}
+        </span>
       </div>
       {gramsNote(line) ? <p className="mt-0.5 text-sm text-olive-600">{gramsNote(line)}</p> : null}
       {line.product ? (
@@ -136,6 +259,42 @@ export function ShoppingPanel({ recipeId }: { recipeId: number }) {
   const [requested, setRequested] = useState(false);
   const list = useRecipeShoppingList(recipeId, requested);
   const data = list.data;
+  const me = useMe();
+  const silpo = useSilpoConnection(!!me.data);
+  const addToCart = useAddToSilpoCart();
+  const [inCart, setInCart] = useState<Record<string, CartState>>({});
+  const [outcome, setOutcome] = useState<CartAddResult | null>(null);
+
+  // Only a list searched in the user's own store holds products their cart accepts.
+  const cartReady = data?.priced_in === 'your_store';
+  const pending = cartItems(data?.lines ?? []).filter((i) => !inCart[i.product_id]);
+
+  function add(items: CartItem[]) {
+    addToCart.mutate(
+      { items },
+      {
+        onSuccess: (result) => {
+          setInCart((prev) => {
+            const next = { ...prev };
+            for (const id of result.added) next[id] = 'added';
+            for (const id of result.not_added) next[id] = 'not_added';
+            return next;
+          });
+          setOutcome(result);
+        },
+      },
+    );
+  }
+
+  function lineCart(line: ShoppingLine): LineCart | null {
+    const item = cartReady ? cartItem(line) : null;
+    if (!item) return null;
+    return {
+      state: inCart[item.product_id],
+      disabled: addToCart.isPending,
+      onAdd: () => add([item]),
+    };
+  }
 
   if (!requested) {
     return (
@@ -172,6 +331,31 @@ export function ShoppingPanel({ recipeId }: { recipeId: number }) {
 
       {data ? (
         <div className="mt-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CartNotice
+              pricedIn={data.priced_in}
+              loggedIn={!!me.data}
+              connected={silpo.data?.connected}
+            />
+            {cartReady && pending.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => add(pending)}
+                disabled={addToCart.isPending}
+                className="text-cream-50 focus:ring-accent-500 min-h-10 rounded-xl bg-olive-800 px-4 font-semibold transition hover:bg-olive-900 focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {addToCart.isPending
+                  ? 'Додаємо в кошик…'
+                  : `Додати все в кошик · ${pending.length}`}
+              </button>
+            ) : null}
+          </div>
+          {addToCart.isError ? (
+            <p role="alert" className="text-accent-600 text-sm font-medium">
+              {addToCart.error.message}
+            </p>
+          ) : null}
+          {outcome ? <CartOutcome result={outcome} /> : null}
           {data.needs_attention > 0 ? (
             <p className="bg-cream-100 rounded-xl px-4 py-3 text-sm text-olive-900">
               Потребують уваги: {data.needs_attention}. Для них нижче показано, що відомо від
@@ -180,7 +364,7 @@ export function ShoppingPanel({ recipeId }: { recipeId: number }) {
           ) : null}
           <ul className="divide-cream-200 divide-y">
             {data.lines.map((line, idx) => (
-              <Line key={`${line.name}-${idx}`} line={line} />
+              <Line key={`${line.name}-${idx}`} line={line} cart={lineCart(line)} />
             ))}
           </ul>
           {data.total_price !== null ? (

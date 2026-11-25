@@ -251,7 +251,9 @@ export interface paths {
         /**
          * Read Recipe Shopping List
          * @description What to buy at Silpo for the ingredients the user does not have: product, packs or kg,
-         *     price, and vetted alternatives when a product is out of stock or short.
+         *     price, and vetted alternatives when a product is out of stock or short. With the user's own
+         *     Silpo account connected, it is searched in their store (`priced_in: your_store`), so the
+         *     products can go straight into their cart.
          */
         get: operations["read_recipe_shopping_list_api_v1_recipes__recipe_id__shopping_list_get"];
         put?: never;
@@ -285,6 +287,27 @@ export interface paths {
          * @description Disconnect the user's Silpo account.
          */
         delete: operations["delete_connection_api_v1_silpo_connection_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/silpo/cart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add To Cart
+         * @description Put shopping-list products into the user's own Silpo cart. The answer is what the cart
+         *     holds afterwards. 409 if Silpo is not connected or the cart cannot take products now.
+         */
+        post: operations["add_to_cart_api_v1_silpo_cart_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -359,6 +382,53 @@ export interface components {
              * @description Збіги з алергенами з профілю користувача
              */
             alerts: components["schemas"]["AllergenAlert"][];
+        };
+        /**
+         * CartAddRequest
+         * @description Products from a shopping list to put into the user's own Silpo cart.
+         */
+        CartAddRequest: {
+            /** Items */
+            items: components["schemas"]["CartItem"][];
+        };
+        /**
+         * CartAddResult
+         * @description What is in the cart after adding: Silpo's cart is read back, nothing is assumed.
+         */
+        CartAddResult: {
+            /**
+             * Added
+             * @description productId, які тепер є в кошику
+             */
+            added: string[];
+            /**
+             * Not Added
+             * @description productId, яких у кошику немає після додавання
+             */
+            not_added: string[];
+            /**
+             * Notes
+             * @description Що варто знати перед оформленням, українською
+             */
+            notes: string[];
+            /**
+             * Checkout Url
+             * @description Посилання на оформлення в Сільпо; є лише для кошика, який можна оформити
+             */
+            checkout_url: string | null;
+        };
+        /** CartItem */
+        CartItem: {
+            /**
+             * Product Id
+             * @description productId товару в Сільпо
+             */
+            product_id: string;
+            /**
+             * Quantity
+             * @description Упаковок, а для вагових товарів кг
+             */
+            quantity: number;
         };
         /** DbHealthResponse */
         DbHealthResponse: {
@@ -658,6 +728,12 @@ export interface components {
              * @description Рядки, де є проблема: немає, мало або фасування
              */
             needs_attention: number;
+            /**
+             * Priced In
+             * @description Чий магазин: користувача (можна класти в кошик) чи спільний (орієнтовно)
+             * @enum {string}
+             */
+            priced_in: "your_store" | "default_store";
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -1338,6 +1414,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_to_cart_api_v1_silpo_cart_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CartAddRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartAddResult"];
+                };
             };
             /** @description Validation Error */
             422: {
