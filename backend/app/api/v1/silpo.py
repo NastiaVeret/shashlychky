@@ -7,8 +7,15 @@ from fastapi.responses import RedirectResponse
 from app.api.deps import CurrentUser, OptionalUser, SettingsDep
 from app.core.errors import SilpoConnectError
 from app.db.session import DbSession
-from app.schemas.silpo import SilpoAuthorizeRead, SilpoConnectionRead
+from app.schemas.silpo import (
+    CartAddRequest,
+    CartAddResult,
+    SilpoAuthorizeRead,
+    SilpoConnectionRead,
+)
+from app.services import silpo_cart as cart_service
 from app.services import silpo_connections as service
+from app.services.silpo_cart import CartDep
 
 router = APIRouter(prefix="/silpo", tags=["silpo"])
 
@@ -41,6 +48,16 @@ async def start_connection(
 async def delete_connection(user: CurrentUser, db: DbSession) -> None:
     """Disconnect the user's Silpo account."""
     await service.disconnect(db, user.id)
+
+
+@router.post("/cart", response_model=CartAddResult)
+async def add_to_cart(
+    body: CartAddRequest, user: CurrentUser, response: Response, db: DbSession, cart: CartDep
+) -> CartAddResult:
+    """Put shopping-list products into the user's own Silpo cart. The answer is what the cart
+    holds afterwards. 409 if Silpo is not connected or the cart cannot take products now."""
+    response.headers["Cache-Control"] = "no-store"
+    return await cart_service.add_to_cart(db, cart, user.id, body.items)
 
 
 @router.get("/callback", response_class=RedirectResponse, include_in_schema=False)

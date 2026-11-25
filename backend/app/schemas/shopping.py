@@ -15,6 +15,9 @@ LineStatus = Literal[
     "at_home", "to_taste", "no_product", "out_of_stock", "partial_stock", "unknown_package", "ok"
 ]
 QuantityUnit = Literal["pack", "kg"]
+# your_store: searched in the user's own Silpo account, so these products can go to their cart
+# default_store: searched in the shared service store; prices and stock are indicative
+PricedIn = Literal["your_store", "default_store"]
 # How the recipe amount became grams: exact (it was a mass), density (ml via the table),
 # density_assumed (the product is not in the table, counted as water), piece_weight (average piece)
 GramsBasis = Literal["exact", "density", "density_assumed", "piece_weight"]
@@ -76,3 +79,6 @@ class RecipeShoppingList(BaseModel):
     lines: list[ShoppingLine]
     total_price: float | None = Field(description="Сума за рядками, для яких відомо, що купувати")
     needs_attention: int = Field(description="Рядки, де є проблема: немає, мало або фасування")
+    priced_in: PricedIn = Field(
+        description="Чий магазин: користувача (можна класти в кошик) чи спільний (орієнтовно)"
+    )

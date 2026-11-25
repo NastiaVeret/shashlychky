@@ -12,9 +12,10 @@ from app.services import nutrition as nutrition_service
 from app.services import product_allergens as allergen_service
 from app.services import recipes as service
 from app.services import shopping as shopping_service
-from app.services.catalog import CatalogDep
+from app.services.catalog import CatalogDep, UserCatalogDep
 from app.services.llm import LLMDep
 from app.services.nutrition import NutritionDep
+from app.services.silpo_connections import get_status as silpo_status
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 
@@ -57,8 +58,17 @@ async def read_recipe_allergens(
 
 @router.get("/{recipe_id}/shopping-list", response_model=RecipeShoppingList)
 async def read_recipe_shopping_list(
-    recipe_id: int, db: DbSession, catalog: CatalogDep, user: OptionalUser
+    recipe_id: int,
+    db: DbSession,
+    catalog: CatalogDep,
+    user_catalog: UserCatalogDep,
+    user: OptionalUser,
 ) -> RecipeShoppingList:
     """What to buy at Silpo for the ingredients the user does not have: product, packs or kg,
-    price, and vetted alternatives when a product is out of stock or short."""
-    return await shopping_service.recipe_shopping_list(db, catalog, recipe_id, user)
+    price, and vetted alternatives when a product is out of stock or short. With the user's own
+    Silpo account connected, it is searched in their store (`priced_in: your_store`), so the
+    products can go straight into their cart."""
+    own = None
+    if user is not None and (await silpo_status(db, user.id)).connected:
+        own = user_catalog(user.id)
+    return await shopping_service.recipe_shopping_list(db, catalog, recipe_id, user, own)

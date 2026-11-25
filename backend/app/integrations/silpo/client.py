@@ -48,6 +48,14 @@ class SilpoNotConnectedError(SilpoError):
         super().__init__("auth", "Сільпо не підключено: потрібен одноразовий вхід")
 
 
+class NoStoreSelectedError(SilpoError):
+    """The account's cart has no store and delivery type yet (a fresh account): nothing can be
+    searched or added until the user picks a delivery address in Silpo."""
+
+    def __init__(self) -> None:
+        super().__init__("silpo_get_shopping_cart_by_id", "У кошику не вибрано магазин")
+
+
 class NoDeliverySlotsError(SilpoError):
     """The store has no available delivery slot, so nothing cart-related can proceed."""
 
@@ -203,7 +211,7 @@ class SilpoClient:
         if not shipments or not isinstance(shipments[0], dict) or not cart.get("deliveryType"):
             # A fresh account's cart has no store yet: nothing can be searched, and that is
             # Silpo's state, not a bug of ours.
-            raise SilpoError("silpo_get_shopping_cart_by_id", "У кошику не вибрано магазин")
+            raise NoStoreSelectedError()
         branch_id = shipments[0]["branchId"]
         delivery_type = cart["deliveryType"]
         slots = await self.call(

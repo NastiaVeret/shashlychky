@@ -8,6 +8,7 @@ docs/integrations/silpo.md.
 from app.integrations.silpo.client import (
     AddResult,
     NoDeliverySlotsError,
+    NoStoreSelectedError,
     SilpoClient,
     SilpoError,
     SilpoNotConnectedError,
@@ -17,6 +18,7 @@ from app.integrations.silpo.client import (
 __all__ = [
     "AddResult",
     "NoDeliverySlotsError",
+    "NoStoreSelectedError",
     "SilpoClient",
     "SilpoError",
     "SilpoNotConnectedError",
