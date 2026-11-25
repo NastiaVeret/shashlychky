@@ -170,7 +170,7 @@ still does, the request fails with 502 and nothing is stored. Allergy names are 
 
 | Concern | Mechanism |
 |---|---|
-| slow or overloaded model | 15 s per-attempt deadline; on timeout / 429 / 5xx / 404 the next model in `GEMINI_FALLBACK_MODELS`; a failed model is skipped for 60 s; up to 2 passes over the chain within a 50 s total budget (Firebase Hosting cuts at 60 s) |
+| slow or overloaded model | 15 s per-attempt deadline; on timeout / 429 / 5xx the next model in `GEMINI_FALLBACK_MODELS` (skipped for 60 s), on 400 / 404 too (skipped for 1 h); up to 3 passes over the chain within a 50 s total budget (Firebase Hosting cuts at 60 s) |
 | invalid JSON | one corrective retry, then 502 |
 | rate limits (429) | treated as unavailable → fallback → 503 |
 | cost | cheapest open model by default; thinking disabled (`thinking_budget=0`) **on the primary model only** - the fallback answers 400 to that flag; `max_output_tokens=2048`; one candidate |
