@@ -31,9 +31,10 @@ RETRYABLE_STATUS = [408, 429, 500, 502, 503, 504]
 # A model that timed out or was overloaded goes to the back of the queue for this long, so the
 # next requests do not each burn a full timeout on it first.
 COOLDOWN_SECONDS = 60.0
-# A model the API does not know (404) is retired for much longer: it will not appear by itself.
+# A model the API does not know (404) or that rejects our request (400) is retired for much
+# longer: that will not fix itself.
 MISSING_MODEL_COOLDOWN_SECONDS = 3600.0
-ROUND_PAUSE_SECONDS = 1.5
+ROUND_PAUSE_SECONDS = 2.0
 # Not worth starting an attempt with less time than this left.
 MIN_ATTEMPT_SECONDS = 2.0
 
@@ -215,10 +216,18 @@ class GeminiLLM:
                         self._cool_down(name)
                         logger.warning("llm rate limited model=%s code=%s", name, exc.code)
                         continue
-                    if exc.code == 404:
+                    # 404: the model is gone or not open to this key. 400: this model rejects
+                    # our request (schema, config). Either way another model may still serve it;
+                    # only key-level errors (401/403) are the same for every model.
+                    if exc.code in (400, 404):
                         last_exc = exc
                         self._cool_down(name, MISSING_MODEL_COOLDOWN_SECONDS)
-                        logger.error("llm model not found, skipping model=%s", name)
+                        logger.error(
+                            "llm model unusable, skipping model=%s code=%s: %s",
+                            name,
+                            exc.code,
+                            exc.message,
+                        )
                         continue
                     logger.error("llm client error model=%s code=%s", name, exc.code)
                     raise LLMInvalidResponseError() from exc

@@ -152,9 +152,21 @@ async def test_failed_model_is_skipped_on_the_next_request() -> None:
     assert calls == ["fallback"]
 
 
-async def test_non_retryable_client_error_is_not_masked() -> None:
+async def test_model_rejecting_the_request_is_skipped() -> None:
+    def behaviour(model: str) -> Any:
+        if model == "primary":
+            raise genai_errors.ClientError(400, {"error": {"message": "bad"}}, None)
+        return _Response(SAMPLE_RECIPE)
+
+    llm, calls = _make_llm(behaviour)
+    result = await llm.generate(system="s", user="u", schema=RecipeContent)
+    assert result.model == "fallback"
+    assert calls == ["primary", "fallback"]
+
+
+async def test_key_level_client_error_is_not_masked() -> None:
     def behaviour(_model: str) -> Any:
-        raise genai_errors.ClientError(400, {"error": {"message": "bad"}}, None)
+        raise genai_errors.ClientError(403, {"error": {"message": "denied"}}, None)
 
     llm, calls = _make_llm(behaviour)
     with pytest.raises(LLMInvalidResponseError):
