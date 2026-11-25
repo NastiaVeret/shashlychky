@@ -702,7 +702,16 @@ export interface components {
         };
         /** RecipeRequest */
         RecipeRequest: {
-            /** Products */
+            /**
+             * Mode
+             * @default from_home
+             * @enum {string}
+             */
+            mode: "from_home" | "buy_all";
+            /**
+             * Products
+             * @default []
+             */
             products: string[];
             /** Preferences */
             preferences?: string | null;

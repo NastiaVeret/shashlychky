@@ -1841,14 +1841,23 @@
       },
       "RecipeRequest": {
         "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "from_home",
+              "buy_all"
+            ],
+            "title": "Mode",
+            "default": "from_home"
+          },
           "products": {
             "items": {
               "type": "string"
             },
             "type": "array",
             "maxItems": 30,
-            "minItems": 1,
-            "title": "Products"
+            "title": "Products",
+            "default": []
           },
           "preferences": {
             "anyOf": [
@@ -1871,9 +1880,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "products"
-        ],
         "title": "RecipeRequest"
       },
       "RecipeShoppingList": {

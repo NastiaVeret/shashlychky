@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { UserProfile } from '../api/profile';
+import type { RecipeRequest } from '../api/recipes';
 import { ProductInput } from '../components/ProductInput';
 import { RecipeCard } from '../components/RecipeCard';
 import { useMe } from '../hooks/useAuth';
@@ -8,6 +9,26 @@ import { useProfile } from '../hooks/useProfile';
 import { useCreateRecipe } from '../hooks/useRecipes';
 
 const SERVINGS = [1, 2, 4, 6] as const;
+
+type Mode = NonNullable<RecipeRequest['mode']>;
+
+const MODES: { value: Mode; label: string }[] = [
+  { value: 'buy_all', label: 'Купити все в Сільпо' },
+  { value: 'from_home', label: 'З того, що є вдома' },
+];
+
+const HERO: Record<Mode, { title: string; accent: string; text: string }> = {
+  buy_all: {
+    title: 'Що приготувати',
+    accent: 'сьогодні?',
+    text: 'Скажіть, чого хочеться, або натисніть «Здивуй мене». Ми придумаємо страву й складемо список покупок у Сільпо з цінами.',
+  },
+  from_home: {
+    title: 'Що приготувати',
+    accent: 'з того, що є?',
+    text: 'Перелічіть продукти з холодильника, і ми запропонуємо страву, яку можна зробити саме з них.',
+  },
+};
 
 const HINT_LINK =
   'focus:ring-accent-500 font-semibold underline hover:text-olive-900 focus:rounded focus:ring-2 focus:outline-none';
@@ -44,6 +65,7 @@ function ProfileHint({ loggedIn, profile }: { loggedIn: boolean; profile?: UserP
 }
 
 export function HomePage() {
+  const [mode, setMode] = useState<Mode>('buy_all');
   const [products, setProducts] = useState<string[]>([]);
   // null until the user picks: until then the profile's usual servings apply.
   const [pickedServings, setServings] = useState<number | null>(null);
@@ -57,26 +79,34 @@ export function HomePage() {
     ? [...SERVINGS]
     : [...SERVINGS, servings].sort((a, b) => a - b);
 
-  const canSubmit = products.length > 0 && !create.isPending;
+  // In buy_all the products are only wishes, so the form works without any.
+  const canSubmit = (mode === 'buy_all' || products.length > 0) && !create.isPending;
+  const hero = HERO[mode];
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
-    create.mutate({ products, servings, preferences: preferences.trim() || null });
+    create.mutate({ mode, products, servings, preferences: preferences.trim() || null });
   };
+
+  // "Surprise me": a dish picked by us, everything bought at Silpo.
+  const surprise = () =>
+    create.mutate({
+      mode: 'buy_all',
+      products: [],
+      servings,
+      preferences: preferences.trim() || null,
+    });
 
   return (
     <div className="space-y-10">
       <section className="pt-8 sm:pt-14">
         <h1 className="font-display text-4xl leading-tight font-black text-olive-900 sm:text-6xl">
-          Що приготувати
+          {hero.title}
           <br />
-          <span className="text-cream-50">з того, що є?</span>
+          <span className="text-cream-50">{hero.accent}</span>
         </h1>
-        <p className="mt-4 max-w-xl text-lg text-olive-900/85">
-          Перелічіть продукти з холодильника, і ми запропонуємо страву, яку можна зробити саме з
-          них.
-        </p>
+        <p className="mt-4 max-w-xl text-lg text-olive-900/85">{hero.text}</p>
       </section>
 
       <form
@@ -84,7 +114,34 @@ export function HomePage() {
         className="rounded-card bg-cream-100 shadow-card space-y-6 p-5 sm:p-8"
         aria-busy={create.isPending}
       >
-        <ProductInput products={products} onChange={setProducts} disabled={create.isPending} />
+        <fieldset>
+          <legend className="sr-only">Режим</legend>
+          <div className="bg-cream-50 inline-flex rounded-xl border-2 border-olive-200 p-1">
+            {MODES.map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => setMode(m.value)}
+                aria-pressed={mode === m.value}
+                className="focus:ring-accent-500 aria-pressed:text-cream-50 rounded-lg px-3 py-1.5 text-sm font-semibold text-olive-800 transition focus:ring-2 focus:outline-none aria-pressed:bg-olive-800"
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        {mode === 'buy_all' ? (
+          <ProductInput
+            products={products}
+            onChange={setProducts}
+            disabled={create.isPending}
+            label="З чим хочеться? (необов'язково)"
+            placeholder="Наприклад: курка, гриби"
+          />
+        ) : (
+          <ProductInput products={products} onChange={setProducts} disabled={create.isPending} />
+        )}
 
         <div className="grid gap-6 sm:grid-cols-2">
           <fieldset>
@@ -122,13 +179,23 @@ export function HomePage() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="bg-accent-500 text-cream-50 hover:bg-accent-600 focus:ring-accent-500/40 rounded-xl px-6 py-3 text-base font-bold shadow-sm transition focus:ring-4 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {create.isPending ? 'Думаємо над рецептом…' : 'Придумати рецепт'}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className="bg-accent-500 text-cream-50 hover:bg-accent-600 focus:ring-accent-500/40 rounded-xl px-6 py-3 text-base font-bold shadow-sm transition focus:ring-4 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {create.isPending ? 'Думаємо над рецептом…' : 'Придумати рецепт'}
+            </button>
+            <button
+              type="button"
+              onClick={surprise}
+              disabled={create.isPending}
+              className="bg-cream-50 focus:ring-accent-500/40 hover:bg-cream-200 rounded-xl border-2 border-olive-800 px-6 py-3 text-base font-bold text-olive-800 transition focus:ring-4 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              🎲 Здивуй мене
+            </button>
+          </div>
           {create.isError ? (
             <p role="alert" className="text-accent-600 text-sm font-medium">
               {create.error.message}
@@ -143,7 +210,7 @@ export function HomePage() {
           role="status"
           className="rounded-card bg-cream-50/70 animate-pulse p-8 text-center text-olive-800"
         >
-          Підбираємо страву з ваших продуктів, це займе кілька секунд…
+          Підбираємо страву, це займе кілька секунд…
         </div>
       ) : null}
 

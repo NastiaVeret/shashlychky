@@ -12,7 +12,7 @@ nutrition service, not estimated by the model.
 import re
 from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Annotated, Any, Self
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -148,18 +148,28 @@ def normalize_product_names(products: list[str]) -> list[str]:
     return result
 
 
+# from_home: a dish mostly from the products the user has; what is missing is marked to buy
+# buy_all: everything is bought at Silpo; the products, if any, are wishes ("with chicken"),
+#          and none at all means "surprise me"
+RecipeMode = Literal["from_home", "buy_all"]
+
+
 class RecipeRequest(BaseModel):
-    products: Annotated[list[str], Field(min_length=1, max_length=MAX_PRODUCTS)]
+    mode: RecipeMode = "from_home"
+    products: Annotated[list[str], Field(max_length=MAX_PRODUCTS)] = []
     preferences: Annotated[str | None, Field(max_length=200)] = None
     servings: Annotated[int, Field(ge=1, le=12)] = 2
 
     @field_validator("products")
     @classmethod
     def normalize_products(cls, products: list[str]) -> list[str]:
-        result = normalize_product_names(products)
-        if not result:
+        return normalize_product_names(products)
+
+    @model_validator(mode="after")
+    def _products_for_home_mode(self) -> "RecipeRequest":
+        if self.mode == "from_home" and not self.products:
             raise ValueError("Потрібен хоча б один продукт")
-        return result
+        return self
 
 
 class Ingredient(BaseModel):

@@ -265,6 +265,8 @@ export function ShoppingPanel({ recipeId }: { recipeId: number }) {
   const [inCart, setInCart] = useState<Record<string, CartState>>({});
   const [outcome, setOutcome] = useState<CartAddResult | null>(null);
 
+  // Only what has to be bought is listed: ingredients already at home are left out.
+  const toBuy = (data?.lines ?? []).filter((l) => l.status !== 'at_home');
   // Only a list searched in the user's own store holds products their cart accepts.
   const cartReady = data?.priced_in === 'your_store';
   const pending = cartItems(data?.lines ?? []).filter((i) => !inCart[i.product_id]);
@@ -301,7 +303,7 @@ export function ShoppingPanel({ recipeId }: { recipeId: number }) {
       <section className="border-cream-200 border-t px-6 py-6 sm:px-8">
         <h3 className="font-display text-xl font-bold">Що купити в Сільпо</h3>
         <p className="mt-2 text-sm text-olive-800">
-          Підбираємо товари для інгредієнтів, яких у вас немає, рахуємо упаковки й дивимось залишки.
+          Підбираємо товари в Сільпо, рахуємо упаковки, ціни й дивимось залишки.
         </p>
         <button
           type="button"
@@ -362,11 +364,17 @@ export function ShoppingPanel({ recipeId }: { recipeId: number }) {
               Сільпо.
             </p>
           ) : null}
-          <ul className="divide-cream-200 divide-y">
-            {data.lines.map((line, idx) => (
-              <Line key={`${line.name}-${idx}`} line={line} cart={lineCart(line)} />
-            ))}
-          </ul>
+          {toBuy.length > 0 ? (
+            <ul className="divide-cream-200 divide-y">
+              {toBuy.map((line, idx) => (
+                <Line key={`${line.name}-${idx}`} line={line} cart={lineCart(line)} />
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-olive-800">
+              Усе для цього рецепта вже є вдома, купувати нічого не треба.
+            </p>
+          )}
           {data.total_price !== null ? (
             <p className="text-right font-semibold text-olive-900">
               Разом за готовими до покупки позиціями: {money(data.total_price)}

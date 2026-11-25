@@ -245,3 +245,22 @@ async def test_shopping_list_of_missing_recipe_returns_404(
     client: AsyncClient, fake_catalog: FakeCatalogProvider, db_required: None
 ) -> None:
     assert (await client.get("/api/v1/recipes/999999999/shopping-list")).status_code == 404
+
+
+async def test_surprise_me_needs_no_products_and_buys_everything(
+    client: AsyncClient, fake_llm: FakeLLM, db_required: None
+) -> None:
+    # SAMPLE_RECIPE marks every ingredient as at home: buy_all must override the model
+    response = await client.post("/api/v1/recipes", json={"mode": "buy_all", "products": []})
+
+    assert response.status_code == 201, response.text
+    assert all(not i["have_at_home"] for i in response.json()["ingredients"])
+    (call,) = fake_llm.calls
+    assert "Сільпо" in call["system"] and "здивуй" in call["user"]
+
+
+async def test_home_mode_still_needs_products(client: AsyncClient, fake_llm: FakeLLM) -> None:
+    response = await client.post("/api/v1/recipes", json={"mode": "from_home", "products": []})
+
+    assert response.status_code == 422
+    assert fake_llm.calls == []
